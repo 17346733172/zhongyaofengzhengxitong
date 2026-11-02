@@ -1,0 +1,87 @@
+# 项目架构、目录结构和数据组织方案
+
+## 分层
+
+```mermaid
+flowchart LR
+    UI[未来前端 / Swagger / 示例脚本] --> API[FastAPI REST 接口]
+    API --> S[应用服务与业务校验]
+    S --> E[离散事件引擎]
+    S --> DB[(SQLite 状态与事件)]
+    T[后台时钟] --> S
+    DB --> WS[WebSocket 快照]
+    WS --> UI
+```
+
+`api.py` 负责协议、参数、鉴权、分页、生命周期；`service.py` 负责审核与状态变更；`engine.py` 负责资源分配及时间推进；`workflow.py` 负责工序生成与演示水量；`store.py` 负责数据库事务。引擎只修改传入状态并发出事件，可离开 HTTP 独立验证。
+
+## 目录
+
+```text
+├── AGENTS.md
+├── README.md
+├── DESIGN.md
+├── CHANGELOG.md
+├── TODO.md
+├── docs/
+│   ├── PROJECT-SPEC.md
+│   ├── ARCHITECTURE.md
+│   ├── COMPONENT-GUIDELINES.md
+│   ├── PAGE-STRUCTURE.md
+│   ├── DEVELOPMENT.md
+│   ├── REGISTRY.md
+│   └── DEPLOYMENT.md
+├── app/
+│   ├── __init__.py
+│   ├── main.py                 # Uvicorn 入口
+│   ├── api.py                  # REST 与 WebSocket
+│   ├── models.py               # 请求模型与枚举
+│   ├── service.py              # 业务与操作事务
+│   ├── engine.py               # 离散事件调度
+│   ├── workflow.py             # 工序、工位、水量假设
+│   └── store.py                # SQLite 快照与事件
+├── tests/test_api.py
+├── scripts/demo.py
+├── examples/prescription.json
+├── data/                       # 自动创建数据库；不提交
+├── requirements.txt
+├── requirements-lock.txt        # 已验证环境的依赖锁定清单
+├── .env.example
+├── .gitignore
+├── start.ps1
+└── 启动后端.cmd
+```
+
+## 数据组织
+
+SQLite 包含两张表。`simulation_state` 的单条 JSON 快照保存时钟、处方、批次、设备和报警；`events` 是独立追加的事件表，包含全局递增 ID、虚拟时间、真实 UTC 记录时间、类型、实体 ID 和载荷。`entity_id,id` 索引支持追溯。状态与事件在同一 `BEGIN IMMEDIATE` 事务中提交，异常则同时回滚。
+
+该聚合快照方案适用于本地、小规模演示，每次变更需要读写完整状态。批次和处方很多时应拆分为规范化表、归档历史，并让调度器单独运行。事件不写入快照，避免每次复制全部历史。
+
+| 实体 | 关键关联 |
+|---|---|
+| Prescription | `external_no` 在业务层唯一，`batch_id` 一对一关联 |
+| Batch | `prescription_id`、`trace_code`、`steps`、`pot_id` |
+| Device | `kind`、`status`、`batch_id`、占用与有效工作时长 |
+| Alarm | `device_id`、故障发生时 `batch_id`、确认与解决状态 |
+| Event | `entity_id` 对应处方、批次、设备、报警或全局仿真 |
+
+## 状态与时间
+
+处方：`pending_review → approved / rejected`。批次：`queued → running ↔ paused → completed`；取消后有锅则先清洗，最终 `cancelled`。`cancel_requested` 表示取消处理中，`dispatched` 表示成品已配发。锅具故障或当前工位故障通过等待原因显示，批次保留运行状态并停止进度。
+
+设备：`idle / busy / fault / offline`。发生故障仍保留所属批次，维修恢复为 `busy` 或 `idle`；只允许空闲设备停用。暂停批次保留全部已分配资源。
+
+引擎推进到最近的工序完成点或后下投料点，处理释放和重新派工，再推进剩余时间。因此大步长不会跳过中间工序。资源按批次优先级排序，同优先级按创建序号排序；进行中的工序不被抢占。锅容量按演示总加水量保守筛选。
+
+自动模式使用单调时钟，每约 250ms 推进一次；WebSocket 每约 500ms 提供新快照或心跳。重启后自动时钟暂停，不补算停机时间。手动步进只在全局暂停时允许。
+
+## 测量与统计边界
+
+温度在工序起始温度与目标温度间线性插值，排队与暂停期间不变化。表压固定为零。水量是演示估算，不模拟实际剩余水量和药效。`produced_bags` 在包装结束时一次性计数，`dispatched_bags` 在配发后统计。
+
+`productive_seconds` 是有效工序推进时间；`occupied_seconds` 包括保留期间的暂停、排队和故障。利用率为有效时长除以设备加入后经过的虚拟时间；吞吐量为已配发袋数除以仿真已推进时间，均不是实际工厂性能承诺。
+
+## 运行边界
+
+进程内使用可重入锁，SQLite 事务串行化写入。只能启动一个服务进程使用同一数据库：多 worker 会各自运行时钟和执行重启暂停。数据库不宜放在网络共享目录。当前没有账户隔离、历史删除接口或在线重置接口。
