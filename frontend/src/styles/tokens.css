@@ -1,0 +1,73 @@
+/*
+ * 设计变量。移植自参考工业监控前端 frontend-dist/assets/panel-*.css 的 :root，
+ * 按煎药仿真平台的语义补充了阶段色与状态色映射。
+ * 修改需同步 docs/ARCHITECTURE.md 与 DESIGN.md。
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 纸面与分隔线 */
+  --paper: #fff;
+  --paper-sunken: #f3f5f7;
+  --paper-inset: #eceff3;
+  --hairline: #d5dae0;
+  --hairline-soft: #e5e9ed;
+
+  /* 三级文本 */
+  --ink: #14181d;
+  --ink-2: #5a6570;
+  --ink-3: #8a939d;
+
+  /* 唯一强调色：煎药火焰的赭橙 */
+  --accent: #c1440e;
+  --accent-strong: #9c3609;
+  --accent-soft: #fbeee7;
+
+  /* 语义色，均配 -soft 底色用于徽标 */
+  --ok: #1a7f4b;
+  --ok-soft: #e7f4ed;
+  --warn: #b45309;
+  --warn-soft: #fbf1e0;
+  --bad: #b42318;
+  --bad-soft: #fcece9;
+  --info: #175cd3;
+  --info-soft: #e9f0fd;
+  --idle: #667085;
+  --idle-soft: #eef0f3;
+  --maint: #6941c6;
+  --maint-soft: #f0eafd;
+
+  --sans: system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  --mono: "JetBrains Mono", "SFMono-Regular", "SF Mono", Menlo, Consolas,
+    "Liberation Mono", "Roboto Mono", monospace;
+
+  --radius: 3px;
+  --grid: 32px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper-sunken);
+  font-family: var(--sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 所有读数一律等宽 + 表格数字，避免数字宽度跳动 */
+.mono,
+.chip-value,
+.temp-value,
+.cabinet-id,
+.desk-gauges .ant-statistic-content-value,
+.gauge-value,
+.batch-code,
+.trace-axis {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

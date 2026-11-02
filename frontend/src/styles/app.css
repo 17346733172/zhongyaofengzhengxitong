@@ -1,0 +1,644 @@
+/*
+ * 布局与组件样式。结构沿用参考前端的 .floor / .topbar / .yard / .cabinet /
+ * .console / .desk / .chip / .trace / .verdict / .fault-table 骨架，
+ * 类名与内容按煎药仿真改写。
+ */
+
+/* ---------- 页面底盘：32px 网格底纹 ---------- */
+.floor {
+  min-height: 100vh;
+  padding: 0 28px 56px;
+  background-color: var(--paper-sunken);
+  background-image: linear-gradient(90deg, #14181d08 1px, transparent 1px),
+    linear-gradient(#14181d08 1px, transparent 1px);
+  background-size: var(--grid) var(--grid);
+}
+
+/* ---------- 顶栏：下边线 + 顶部 3px 赭橙内阴影 ---------- */
+.topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 24px;
+  padding: 22px 0 0;
+  border-bottom: 1px solid var(--ink);
+  box-shadow: inset 0 3px 0 var(--accent);
+}
+.topbar-head {
+  padding-bottom: 12px;
+}
+.topbar h3 {
+  margin: 0 0 5px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+.silkscreen {
+  display: block;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+.topbar-clock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+
+/* ---------- 左导航 ---------- */
+.shell {
+  display: grid;
+  grid-template-columns: 168px 1fr;
+  gap: 20px;
+  margin-top: 20px;
+}
+.sidenav {
+  align-self: start;
+  position: sticky;
+  top: 20px;
+}
+.sidenav .ant-menu {
+  border-inline-end: none !important;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--radius);
+}
+.sidenav .ant-menu-item {
+  margin: 0;
+  width: 100%;
+  font-size: 13px;
+}
+.sidenav .ant-menu-item-selected {
+  background: var(--accent-soft) !important;
+  color: var(--accent-strong) !important;
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+.sidenav-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ink-3);
+  background: var(--paper);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+}
+.workspace {
+  min-width: 0;
+}
+
+/* ---------- 区块标题 ---------- */
+.section-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 7px;
+}
+.section-title {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  color: var(--ink-3);
+}
+
+/* ---------- 设备院：自适应卡片网格 ---------- */
+.yard {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  gap: 12px;
+  margin: 20px 0;
+}
+.cabinet {
+  display: block;
+  width: 100%;
+  padding: 11px 12px 12px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-top: 3px solid var(--hairline);
+  border-radius: var(--radius);
+  transition: border-color 0.12s, background 0.12s;
+}
+.cabinet:hover {
+  border-color: var(--accent-strong);
+  border-top-color: var(--accent);
+}
+.cabinet.selected {
+  border-color: var(--accent);
+  border-top-color: var(--accent);
+  background: var(--accent-soft);
+}
+.cabinet-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 18px;
+}
+.cabinet-id {
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--ink);
+}
+.cabinet-spacer {
+  flex: 1;
+}
+.cabinet-chip {
+  display: inline-block;
+  padding: 0 6px;
+  font-size: 11px;
+  line-height: 1.55;
+  white-space: nowrap;
+  border: 1px solid;
+  border-radius: var(--radius);
+}
+.cabinet-meta {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.cabinet-plan {
+  display: block;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px dashed var(--hairline-soft);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.cabinet-plan.is-none {
+  color: var(--ink-3);
+}
+
+/* ---------- 状态灯 ---------- */
+.lamp {
+  display: inline-block;
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border: 1px solid #14181d47;
+  border-radius: 50%;
+}
+.lamp-idle { background: var(--idle); }
+.lamp-busy { background: var(--info); }
+.lamp-fault { background: var(--bad); animation: 0.7s ease-in-out infinite pulse; }
+.lamp-offline { background: var(--ink-3); }
+
+/* ---------- 指标 chip ---------- */
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: nowrap;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.chip-label {
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--ink-3);
+}
+.chip-value {
+  font-weight: 600;
+  color: var(--ink);
+}
+.chip-unit {
+  margin-left: 1px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ---------- 详情面板 console ---------- */
+.console {
+  padding: 16px 18px 20px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-top: 3px solid var(--ink);
+  border-radius: var(--radius);
+}
+.console-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.console-head h4 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+.console .ant-descriptions {
+  font-size: 12px;
+}
+.console .ant-descriptions-item-label {
+  padding-right: 10px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  background: var(--paper);
+}
+.console .ant-descriptions-item-content {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+.console .ant-descriptions-bordered .ant-descriptions-view {
+  overflow: hidden;
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+}
+.console .ant-descriptions-bordered .ant-descriptions-item-label,
+.console .ant-descriptions-bordered .ant-descriptions-item-content {
+  padding: 5px 12px;
+  border-right: 1px solid var(--hairline-soft);
+}
+.console .ant-descriptions-row {
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.console .ant-descriptions-row:last-child {
+  border-bottom: none;
+}
+
+/* ---------- 统计面板 desk-gauges ---------- */
+.desk {
+  padding-top: 4px;
+}
+.desk-gauges {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  background: var(--hairline-soft);
+  border: 1px solid var(--hairline-soft);
+  border-radius: var(--radius);
+}
+.desk-gauges .ant-statistic {
+  margin: 0;
+  padding: 9px 12px 10px;
+  background: var(--paper);
+}
+.desk-gauges .ant-statistic-title {
+  margin-bottom: 3px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+}
+.desk-gauges .ant-statistic-content {
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--ink);
+}
+.desk-gauges .ant-statistic-content-suffix {
+  font-size: 12px;
+  color: var(--ink-3);
+}
+
+/* ---------- 工序时间轴 ---------- */
+.stage-track {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+.stage-node {
+  padding: 4px 8px;
+  font-size: 12px;
+  background: var(--paper-inset);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  color: var(--ink-2);
+}
+.stage-node.running {
+  background: var(--info-soft);
+  border-color: var(--info);
+  color: var(--info);
+  font-weight: 600;
+}
+.stage-node.completed {
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok);
+}
+.stage-node.skipped {
+  text-decoration: line-through;
+  color: var(--ink-3);
+}
+
+/* ---------- 温度曲线 trace ---------- */
+.trace-wrap {
+  margin: 4px 0 16px;
+}
+.trace {
+  display: block;
+  width: 100%;
+  height: 138px;
+  background-color: var(--paper);
+  background-image: linear-gradient(to right, var(--hairline-soft) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--hairline-soft) 1px, transparent 1px);
+  background-position: -1px -1px;
+  background-size: 40px 32px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.trace-grid {
+  stroke: var(--hairline-soft);
+  stroke-width: 1px;
+}
+.trace-axis {
+  fill: var(--ink-3);
+  font-size: 8px;
+}
+.trace-line {
+  fill: none;
+  stroke-width: 1.6px;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.trace-empty {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 138px;
+  background: var(--paper);
+  border: 1px dashed var(--hairline);
+  border-radius: var(--radius);
+}
+
+/* ---------- 批次结论条 verdict ---------- */
+.verdict {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  margin: 16px 0;
+  padding: 12px 14px;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.verdict-badge {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  min-width: 92px;
+  padding: 8px 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.verdict-icon {
+  font-size: 22px;
+}
+.verdict-text {
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+.verdict-badge.tone-ok { background: var(--ok-soft); border-color: var(--ok); color: var(--ok); }
+.verdict-badge.tone-bad { background: var(--bad-soft); border-color: var(--bad); color: var(--bad); }
+.verdict-badge.tone-info { background: var(--info-soft); border-color: var(--info); color: var(--info); }
+.verdict-badge.tone-warn { background: var(--warn-soft); border-color: var(--warn); color: var(--warn); }
+.verdict-badge.tone-idle { background: var(--idle-soft); border-color: var(--hairline); color: var(--ink-3); }
+.verdict-body {
+  flex: 1;
+  min-width: 0;
+}
+.verdict-progress-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 5px;
+}
+.verdict-track {
+  height: 8px;
+  overflow: hidden;
+  background: var(--paper-inset);
+  border: 1px solid var(--hairline);
+  border-radius: 1px;
+}
+.verdict-fill {
+  height: 100%;
+  background: var(--info);
+  transition: width 0.3s;
+}
+.verdict-fill.tone-ok { background: var(--ok); }
+.verdict-fill.tone-bad { background: var(--bad); }
+
+/* ---------- 报警表 fault-table ---------- */
+.fault-table {
+  overflow: hidden;
+  font-size: 12px;
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.fault-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) minmax(80px, 1fr) minmax(90px, 1fr) 92px;
+  gap: 10px;
+  padding: 6px 12px;
+  background: var(--paper);
+  border-bottom: 1px solid var(--hairline-soft);
+}
+.fault-row:last-child {
+  border-bottom: none;
+}
+.fault-head {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  background: var(--paper-sunken);
+}
+.fault-kind {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--bad);
+}
+
+/* ---------- 队列条 slot-strip ---------- */
+.slot-strip {
+  display: flex;
+  gap: 10px;
+  padding: 14px 0;
+  overflow-x: auto;
+}
+.slot-bay {
+  min-width: 150px;
+  padding: 9px 10px 10px;
+  text-align: left;
+  color: inherit;
+  cursor: pointer;
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+  transition: border-color 0.12s, background 0.12s;
+}
+.slot-bay:hover {
+  border-color: var(--ink-3);
+}
+.slot-bay.active {
+  background: var(--accent-soft);
+  border-color: var(--accent);
+}
+.slot-index {
+  display: block;
+  margin-bottom: 2px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--ink-2);
+}
+.slot-serial {
+  display: block;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.waiting-reason {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--warn);
+}
+
+/* ---------- 通用提示 ---------- */
+.banner {
+  margin: 16px 0 0;
+  font-size: 13px;
+  border: 1px solid var(--warn) !important;
+  border-left: 3px solid var(--warn) !important;
+  border-radius: var(--radius) !important;
+  background: var(--warn-soft) !important;
+}
+.banner .ant-alert-message {
+  color: var(--warn);
+}
+.notice {
+  font-size: 11px;
+  color: var(--ink-3);
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes pulse {
+  50% { opacity: 0.3; }
+}
+
+/* ---------- 键盘可达性 ----------
+   所有可交互元素都需要可见焦点环；不用 outline:none 而不给替代。 */
+.cabinet:focus-visible,
+.slot-bay:focus-visible,
+.trace-key:focus-visible,
+.stage-node:focus-visible,
+.sidenav .ant-menu-item:focus-visible,
+.fault-row .ant-btn:focus-visible,
+.topbar a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* AntD 默认焦点环在浅色纸面上偏弱，统一加强 */
+.ant-btn:focus-visible,
+.ant-tag:focus-visible,
+.ant-input-number:focus-within,
+.ant-select-focused .ant-select-selector {
+  outline: 2px solid var(--accent) !important;
+  outline-offset: 1px;
+}
+
+/* ---------- 减少动态效果 ----------
+   故障脉冲与转动动画在用户要求减少动态时全部停下。 */
+@media (prefers-reduced-motion: reduce) {
+  .lamp-fault,
+  .lamp-busy,
+  .fan.on,
+  .status-STARTING,
+  .comm-DEGRADED {
+    animation: none !important;
+  }
+  .cabinet,
+  .slot-bay,
+  .plate,
+  .verdict-fill,
+  .vacuum-fill,
+  .ant-btn,
+  .ant-tag {
+    transition: none !important;
+  }
+}
+
+/* ---------- 响应式 ----------
+   DESIGN.md 要求宽度低于 1024px 时收起左导航、表格允许横向滚动、关键操作保持可见。
+   桌面是 168px 固定导航列 + 工作区；窄屏改为单列，导航变成可横向滚动的条。 */
+@media (max-width: 1023px) {
+  .floor {
+    padding: 0 16px 40px;
+  }
+  .topbar {
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  .topbar-head,
+  .topbar-clock {
+    min-width: 0;
+    padding-bottom: 10px;
+  }
+  .topbar h3 {
+    font-size: 17px;
+  }
+  .shell {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .sidenav {
+    position: static;
+  }
+  /* 导航横过来，超出部分自身滚动，不把页面撑出横向滚动条 */
+  .sidenav .ant-menu {
+    display: flex;
+    overflow-x: auto;
+  }
+  .sidenav .ant-menu-item {
+    flex: none;
+    width: auto;
+    white-space: nowrap;
+  }
+  .sidenav .ant-menu-item-selected {
+    box-shadow: inset 0 3px 0 var(--accent);
+  }
+  .sidenav-note {
+    display: none;
+  }
+  .yard {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  }
+  .desk-gauges {
+    grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  }
+  .fault-row {
+    grid-template-columns: 1fr 1fr;
+  }
+  .console {
+    padding: 14px 14px 16px;
+  }
+}
