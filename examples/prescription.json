@@ -1,0 +1,26 @@
+{
+  "external_no": "EXAMPLE-001",
+  "patient_code": "SIM-001",
+  "doses": 3,
+  "bags_per_dose": 2,
+  "bag_volume_ml": 200,
+  "priority": 0,
+  "herbs": [
+    {"name": "演示常规饮片", "grams_per_dose": 12, "method": "normal"},
+    {"name": "演示先煎组", "grams_per_dose": 10, "method": "pre_decoct"},
+    {"name": "演示后下组", "grams_per_dose": 6, "method": "late_add"},
+    {"name": "演示包煎组", "grams_per_dose": 9, "method": "bag"}
+  ],
+  "recipe": {
+    "soak_seconds": 1800,
+    "pre_decoct_seconds": 1200,
+    "heat_seconds": 300,
+    "first_decoct_seconds": 1800,
+    "second_decoct_seconds": 1200,
+    "late_add_seconds": 300,
+    "target_temperature_c": 96,
+    "water_ml_per_g": 8,
+    "evaporation_ml_per_minute": 5
+  },
+  "note": "纯仿真示例，不含真实患者或临床处方"
+}
