@@ -8,11 +8,11 @@ const { TextArea } = Input;
 
 /** 工艺参数默认值与 backend/app/models.py 的 Recipe 保持一致 */
 const RECIPE_DEFAULTS = {
-  soak_seconds: 1800,
-  pre_decoct_seconds: 1200,
-  heat_seconds: 300,
-  first_decoct_seconds: 1800,
-  second_decoct_seconds: 1200,
+  soak_seconds: 300,
+  pre_decoct_seconds: 900,
+  heat_seconds: 0,
+  first_decoct_seconds: 900,
+  second_decoct_seconds: 900,
   late_add_seconds: 300,
   target_temperature_c: 96,
   water_ml_per_g: 8,
@@ -22,7 +22,7 @@ const RECIPE_DEFAULTS = {
 const RECIPE_FIELDS = [
   { name: "soak_seconds", label: "浸泡时长", min: 1, max: 14400, unit: "s" },
   { name: "pre_decoct_seconds", label: "先煎时长", min: 1, max: 7200, unit: "s" },
-  { name: "heat_seconds", label: "升温时长", min: 1, max: 3600, unit: "s" },
+  { name: "heat_seconds", label: "额外升温时长", min: 0, max: 3600, unit: "s", hint: "默认 0，升温并入 15 分钟煎煮，不额外计时" },
   { name: "first_decoct_seconds", label: "一煎时长", min: 1, max: 7200, unit: "s" },
   { name: "second_decoct_seconds", label: "二煎时长", min: 0, max: 7200, unit: "s", hint: "为 0 时跳过二煎" },
   { name: "late_add_seconds", label: "后下提前量", min: 1, max: 3600, unit: "s", hint: "必须小于一煎时长" },
@@ -157,8 +157,11 @@ export function PrescriptionForm({ open, onClose, onCreated }) {
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: "0 14px" }}>
           {RECIPE_FIELDS.map((f) => (
-            <Form.Item key={f.name} name={["recipe", f.name]} label={f.label} tooltip={f.hint} rules={[{ required: true }]}>
-              <InputNumber min={f.min} max={f.max} style={{ width: "100%" }} addonAfter={f.unit} />
+            <Form.Item key={f.name} name={["recipe", f.name]} label={f.label} tooltip={f.hint} rules={[{ required: true }]}
+                       getValueProps={f.unit === "s" ? (seconds) => ({ value: seconds == null ? seconds : seconds / 60 }) : undefined}
+                       normalize={f.unit === "s" ? (minutes) => minutes == null ? minutes : Math.round(minutes * 60 * 1000000) / 1000000 : undefined}>
+              <InputNumber min={f.unit === "s" ? f.min / 60 : f.min} max={f.unit === "s" ? f.max / 60 : f.max}
+                           style={{ width: "100%" }} addonAfter={f.unit === "s" ? "分钟" : f.unit} />
             </Form.Item>
           ))}
         </div>

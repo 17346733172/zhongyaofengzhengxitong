@@ -17,7 +17,7 @@ const STATUS_FILTERS = [
 const STATUS_COLORS = { pending_review: "processing", approved: "success", rejected: "error" };
 
 /** 处方列表。数据源 GET /api/v1/prescriptions，支持 status 筛选与 offset/limit 分页。 */
-export function PrescriptionListPage() {
+export function PrescriptionListPage({ batchCount }) {
   const [status, setStatus] = useState(undefined);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState({ items: [], total: 0, limit: 50 });
@@ -42,7 +42,8 @@ export function PrescriptionListPage() {
     }
   }, [status, offset]);
 
-  useEffect(() => { load(); }, [load]);
+  // 演示场景同时新增处方和批次；批次数变化时同步列表，不随自动时钟反复请求。
+  useEffect(() => { load(); }, [load, batchCount]);
 
   return (
     <section aria-label="处方列表">

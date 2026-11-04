@@ -3,6 +3,7 @@ import unittest
 import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
 from starlette.websockets import WebSocketDisconnect
@@ -20,7 +21,7 @@ class BackendTests(unittest.TestCase):
         self.temp = tempfile.TemporaryDirectory(prefix="run-", dir=test_root)
         self.assertEqual(Path(self.temp.name).resolve().parent, test_root.resolve())
         self.db = Path(self.temp.name) / "test.db"
-        self.app = create_app(self.db, api_key="", enable_runner=False)
+        self.app = create_app(self.db, api_key="", enable_runner=False, enable_debug_step=True)
         self.client = TestClient(self.app).__enter__()
         self.sequence = 0
 
@@ -63,6 +64,75 @@ class BackendTests(unittest.TestCase):
         schema = self.client.get("/openapi.json").json()
         self.assertIn("/api/v1/simulation/step", schema["paths"])
         self.assertEqual(self.get("/workflow")["reference_title"], "北京本草方源煎药中心应用案例")
+
+    def test_default_single_decoction_takes_user_specified_minutes(self):
+        b = self.batch(recipe={"second_decoct_seconds": 0})
+        expected = {
+            "dispensing": 600, "verification": 300, "transport": 300,
+            "water_fill": 180, "soaking": 300, "first_decoct": 900,
+            "filtering": 180, "packaging": 300, "labeling": 300,
+            "quality_check": 180, "distribution": 180, "residue": 120, "cleaning": 180,
+        }
+        self.assertEqual({step["code"]: step["duration_seconds"] for step in b["steps"]}, expected)
+        self.assertEqual(b["planned_processing_seconds"], 67 * 60)
+        self.step(67 * 60 - 1)
+        self.assertNotEqual(self.fetch_batch(b)["status"], "completed")
+        self.step(1)
+        done = self.fetch_batch(b)
+        self.assertEqual(done["status"], "completed")
+        self.assertEqual(done["completed_at"] - done["started_at"], 67 * 60)
+
+    def test_repeated_operations_and_packaging_use_fixed_station_times(self):
+        scene = self.post("/simulation/scenarios", {"count": 3}, 201)
+        expected_by_kind = {
+            "dispenser": 600, "verification": 300, "conveyor": 300, "water": 180,
+            "soaking": 300, "decocter": 900, "filter": 180, "packer": 300,
+            "labeler": 300, "quality": 180, "dispatch": 180, "residue": 120, "washer": 180,
+        }
+        for batch_id in scene["batch_ids"]:
+            b = self.get(f"/batches/{batch_id}")
+            for step in b["steps"]:
+                self.assertEqual(step["duration_seconds"], expected_by_kind[step["device_kind"]], step["code"])
+            self.assertNotIn("heating", [step["code"] for step in b["steps"]])
+            self.assertNotIn("second_heating", [step["code"] for step in b["steps"]])
+        large = self.batch(doses=30, bags_per_dose=4)
+        self.assertEqual(next(step["duration_seconds"] for step in large["steps"] if step["code"] == "packaging"), 300)
+
+    def test_real_time_defaults_and_debug_step_disabled(self):
+        normal = create_app(self.db, api_key="", enable_runner=False, enable_debug_step=False)
+        with TestClient(normal) as client:
+            self.assertFalse(client.get("/api/v1/workflow").json()["debug_step_enabled"])
+            self.assertEqual(client.get("/api/v1/simulation").json()["clock"]["speed"], 1)
+            for speed in (0.5, 10, 60):
+                self.assertEqual(client.post("/api/v1/simulation/start", json={"speed": speed}).status_code, 422)
+            disabled = client.post("/api/v1/simulation/step", json={"seconds": 600})
+            self.assertEqual(disabled.status_code, 409)
+            self.assertEqual(disabled.json()["error"]["code"], "debug_step_disabled")
+            started = client.post("/api/v1/simulation/start", json={})
+            self.assertEqual(started.status_code, 200)
+            self.assertEqual(started.json()["speed"], 1)
+            client.post("/api/v1/simulation/pause")
+
+    def test_real_time_dispensing_boundary_and_pause(self):
+        b = self.batch()
+        service = self.app.state.service
+        with patch("app.service.time.monotonic", return_value=1000):
+            service.clock("start", 1)
+        with patch("app.service.time.monotonic", return_value=1599):
+            service.auto_tick()
+        running = service.batch(b["id"])
+        self.assertEqual(running["current_stage"], "dispensing")
+        self.assertEqual(running["steps"][0]["elapsed_seconds"], 599)
+        with patch("app.service.time.monotonic", return_value=1600):
+            service.auto_tick()
+            service.clock("pause")
+        finished = service.batch(b["id"])
+        self.assertEqual(finished["steps"][0]["finished_at"], 600)
+        self.assertEqual(finished["current_stage"], "verification")
+        with patch("app.service.time.monotonic", return_value=2200):
+            service.auto_tick()
+        self.assertEqual(service.snapshot()["clock"]["now"], 600)
+        self.assertEqual(service.batch(b["id"])["steps"][1]["elapsed_seconds"], 0)
 
     def test_review_and_duplicate_guards(self):
         p = self.prescription()
@@ -122,6 +192,8 @@ class BackendTests(unittest.TestCase):
         low = self.batch(priority=0)
         high = self.batch(priority=10)
         other = self.batch(priority=5)
+        for _ in range(5):
+            self.batch(priority=1)
         self.step(1)
         self.assertIsNotNone(self.fetch_batch(high)["pot_id"])
         self.assertIsNotNone(self.fetch_batch(other)["pot_id"])
@@ -132,7 +204,43 @@ class BackendTests(unittest.TestCase):
             assigned = [s["device_id"] for b in snapshot["batches"] for s in b["steps"] if s["status"] == "running"]
             self.assertEqual(len(assigned), len(set(assigned)))
         self.step(10000)
-        self.assertEqual(self.get("/batches?status=completed")["total"], 3)
+        self.assertEqual(self.get("/batches?status=completed")["total"], 8)
+
+    def test_seven_dispensers_and_eighth_batch_waiting(self):
+        batches = [self.batch() for _ in range(8)]
+        self.step(599)
+        running = [self.fetch_batch(batch) for batch in batches]
+        started = [batch for batch in running if batch["pot_id"] is not None]
+        self.assertEqual(len(started), 7)
+        stations = [batch["steps"][0]["device_id"] for batch in started]
+        self.assertEqual(len(set(stations)), 7)
+        self.assertTrue(all(batch["steps"][0]["elapsed_seconds"] == 599 for batch in started))
+        self.assertIn("工位", running[-1]["waiting_reason"])
+        self.assertIsNone(running[-1]["pot_id"])
+        self.step(1)
+        eighth = self.fetch_batch(batches[-1])
+        self.assertIsNotNone(eighth["pot_id"])
+        self.assertEqual(eighth["current_stage"], "dispensing")
+        self.assertEqual(eighth["steps"][0]["elapsed_seconds"], 0)
+        self.step(1)
+        self.assertEqual(self.fetch_batch(batches[-1])["steps"][0]["elapsed_seconds"], 1)
+
+    def test_fifteen_pots_are_exclusive_until_cleanup_finishes(self):
+        batches = [self.batch() for _ in range(16)]
+        self.step(1200)
+        views = [self.fetch_batch(batch) for batch in batches]
+        reserved = [batch["pot_id"] for batch in views if batch["pot_id"] is not None]
+        self.assertEqual(len(reserved), 15)
+        self.assertEqual(len(set(reserved)), 15)
+        self.assertIsNone(views[-1]["pot_id"])
+        self.assertIn("洁净煎药锅", views[-1]["waiting_reason"])
+        freed_pot = views[0]["pot_id"]
+        self.post(f"/batches/{batches[0]['id']}/cancel", {})
+        self.step(299)
+        self.assertIsNone(self.fetch_batch(batches[-1])["pot_id"])
+        self.step(1)
+        self.assertEqual(self.fetch_batch(batches[0])["status"], "cancelled")
+        self.assertEqual(self.fetch_batch(batches[-1])["pot_id"], freed_pot)
 
     def test_device_fault_freezes_then_resumes(self):
         b = self.batch()
@@ -182,7 +290,7 @@ class BackendTests(unittest.TestCase):
         pot = self.fetch_batch(b)["pot_id"]
         self.post(f"/batches/{b['id']}/cancel", {})
         self.assertTrue(next(d for d in self.get("/devices")["items"] if d["id"] == pot)["batch_id"])
-        self.step(119)
+        self.step(299)
         self.assertNotEqual(self.fetch_batch(b)["status"], "cancelled")
         self.step(1)
         done = self.fetch_batch(b)
@@ -254,7 +362,7 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(sorted(codes), [201, 409, 409, 409])
 
     def test_auto_run_blocks_manual_step(self):
-        self.post("/simulation/start", {"speed": 10})
+        self.post("/simulation/start", {"speed": 1})
         self.post("/simulation/step", {"seconds": 1}, 409)
         self.post("/simulation/pause")
         self.assertFalse(self.get("/simulation")["clock"]["running"])
@@ -307,11 +415,13 @@ class BackendTests(unittest.TestCase):
         self.step(10)
         with self.app.state.service.store.transaction() as (s, emit):
             s["clock"]["running"] = True
+            s["clock"]["speed"] = 60
         restarted = create_app(self.db, api_key="", enable_runner=False)
         with TestClient(restarted) as client:
             clock = client.get("/api/v1/simulation").json()["clock"]
             self.assertFalse(clock["running"])
             self.assertEqual(clock["now"], 10)
+            self.assertEqual(clock["speed"], 1)
 
     def test_auto_runner_advances_and_idle_websocket_clock_updates(self):
         running_app = create_app(self.db, api_key="", enable_runner=True)
@@ -319,7 +429,7 @@ class BackendTests(unittest.TestCase):
             with client.websocket_connect("/ws/simulation") as ws:
                 first = ws.receive_json()
                 self.assertEqual(first["data"]["clock"]["now"], 0)
-                client.post("/api/v1/simulation/start", json={"speed": 10})
+                client.post("/api/v1/simulation/start", json={"speed": 1})
                 latest = None
                 for _ in range(5):
                     message = ws.receive_json()

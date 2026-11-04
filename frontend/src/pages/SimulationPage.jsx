@@ -2,9 +2,10 @@ import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Alert, Button, Popconfirm, Space, Tag, message } from "antd";
 import { api } from "../api/client";
-import { BatchStatusTag, Chip, DeviceStatusTag, Lamp } from "../components/Display";
+import { Chip, DeviceStatusTag, Lamp, PanelSkeleton } from "../components/Display";
+import { SimulationEmptyState } from "../components/SimulationEmptyState";
 import {
-  BATCH_STATUS_LABELS, DEVICE_KIND_LABELS, formatVirtualDuration,
+  BATCH_STATUS_LABELS, DEVICE_KIND_LABELS, deviceDisplayCode, formatVirtualDuration,
 } from "../domain/labels";
 
 /**
@@ -18,6 +19,13 @@ export function SimulationPage({ snapshot, onChanged }) {
   const batches = snapshot?.batches || [];
   const devices = snapshot?.devices || [];
   const alarms = snapshot?.alarms || [];
+  const orderedDevices = useMemo(() => {
+    const kinds = Object.keys(DEVICE_KIND_LABELS);
+    return [...devices].sort((a, b) =>
+      kinds.indexOf(a.kind) - kinds.indexOf(b.kind)
+      || deviceDisplayCode(a).localeCompare(deviceDisplayCode(b), "en", { numeric: true })
+      || a.id.localeCompare(b.id));
+  }, [devices]);
 
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
   const activeAlarms = useMemo(() => alarms.filter((a) => a.status === "active"), [alarms]);
@@ -39,8 +47,11 @@ export function SimulationPage({ snapshot, onChanged }) {
   const deviceAction = (id, action) =>
     run(() => api.deviceAction(id, action), `设备 ${id} 已执行 ${action}`);
 
+  if (!snapshot) return <PanelSkeleton label="正在加载仿真数据…" />;
+
   return (
     <>
+      {batches.length === 0 ? <SimulationEmptyState /> : null}
       <section aria-label="报警">
         <div className="section-head">
           <span className="section-title">活跃报警</span>
@@ -55,13 +66,35 @@ export function SimulationPage({ snapshot, onChanged }) {
         )}
       </section>
 
+      <section aria-label="批次队列" style={{ marginTop: 24 }}>
+        <div className="section-head">
+          <span className="section-title">批次队列 · 共 {batches.length} 批</span>
+          <span className="notice">按优先级与创建顺序调度，进行中的工序不会被抢占</span>
+        </div>
+        {batches.length === 0 ? (
+          <div className="console"><span className="notice">暂无批次，请在上方生成演示数据，或在处方页审核并创建批次。</span></div>
+        ) : (
+          <div className="slot-strip">
+            {batches.map((b) => (
+              <Link key={b.id} to={`/batches/${b.id}`} className="slot-bay">
+                <span className="slot-index">#{b.sequence} · {BATCH_STATUS_LABELS[b.status] || b.status}</span>
+                <span className="slot-serial mono">{b.trace_code}</span>
+                <span className="slot-serial">{b.current_stage_name || "—"}</span>
+                <span className="slot-serial mono">{b.progress_percent}%</span>
+                {b.waiting_reason ? <span className="waiting-reason">等待：{b.waiting_reason}</span> : null}
+              </Link>
+            ))}
+          </div>
+        )}
+      </section>
+
       <section aria-label="设备院">
         <div className="section-head" style={{ marginTop: 20 }}>
           <span className="section-title">设备院 · 共 {devices.length} 台</span>
           <span className="notice">点击卡片查看可执行操作</span>
         </div>
         <div className="yard">
-          {devices.map((d) => {
+          {orderedDevices.map((d) => {
             const owner = d.batch_id ? batchById.get(d.batch_id) : null;
             return (
               <button key={d.id} type="button"
@@ -70,7 +103,7 @@ export function SimulationPage({ snapshot, onChanged }) {
                       aria-pressed={selected === d.id}>
                 <div className="cabinet-row">
                   <Lamp status={d.status} />
-                  <span className="cabinet-id">{d.id}</span>
+                  <span className="cabinet-id" title={d.id}>{deviceDisplayCode(d)}</span>
                   <span className="cabinet-spacer" />
                   <span className="cabinet-chip"
                         style={{ borderColor: "var(--hairline)", color: "var(--ink-2)" }}>
@@ -103,7 +136,7 @@ export function SimulationPage({ snapshot, onChanged }) {
         <section className="console" aria-label="设备操作" style={{ marginTop: 4 }}>
           <div className="console-head">
             <div>
-              <h4>{device.id} · {DEVICE_KIND_LABELS[device.kind] || device.kind}</h4>
+              <h4 title={device.id}>{deviceDisplayCode(device)} · {DEVICE_KIND_LABELS[device.kind] || device.kind}</h4>
               <Space size={6} wrap>
                 <DeviceStatusTag status={device.status} />
                 <Chip label="容量" value={device.capacity_ml} unit="ml" />
@@ -131,28 +164,6 @@ export function SimulationPage({ snapshot, onChanged }) {
           </span>
         </section>
       ) : null}
-
-      <section aria-label="批次队列" style={{ marginTop: 24 }}>
-        <div className="section-head">
-          <span className="section-title">批次队列 · 按优先级与创建顺序</span>
-          <span className="notice">进行中的工序不会被抢占</span>
-        </div>
-        {batches.length === 0 ? (
-          <div className="console"><span className="notice">暂无批次。可在 Swagger 或用演示场景生成匿名批次。</span></div>
-        ) : (
-          <div className="slot-strip">
-            {batches.map((b) => (
-              <Link key={b.id} to={`/batches/${b.id}`} className="slot-bay">
-                <span className="slot-index">#{b.sequence} · {BATCH_STATUS_LABELS[b.status] || b.status}</span>
-                <span className="slot-serial mono">{b.trace_code}</span>
-                <span className="slot-serial">{b.current_stage_name || "—"}</span>
-                <span className="slot-serial mono">{b.progress_percent}%</span>
-                {b.waiting_reason ? <span className="waiting-reason">等待：{b.waiting_reason}</span> : null}
-              </Link>
-            ))}
-          </div>
-        )}
-      </section>
 
       <section aria-label="报警列表" style={{ marginTop: 8 }}>
         <div className="section-head">

@@ -185,7 +185,7 @@ export function BatchDetailPage() {
       <section className="console" style={{ marginTop: 16 }} aria-label="温度曲线">
         <div className="section-head">
           <span className="section-title">温度过程曲线 · 仿真采样</span>
-          <span className="notice">时间为虚拟秒；采样发生在阶段边界与每次推进末尾，非固定频率传感器数据</span>
+          <span className="notice">横轴为累计运行秒数；采样发生在阶段边界与计时推进时，非真实传感器数据</span>
         </div>
         <div className="trace-wrap">
           <TraceChart points={telemetry.map((e) => ({

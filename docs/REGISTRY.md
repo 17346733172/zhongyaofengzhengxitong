@@ -23,9 +23,9 @@
 | GET | `/alarms` | 分页报警列表 |
 | POST | `/alarms/{id}/acknowledge` | 确认报警，修复需操作设备 |
 | GET | `/simulation` | 完整快照与最新事件 ID |
-| POST | `/simulation/start` | 自动运行，请求 `{"speed":60}` |
+| POST | `/simulation/start` | 固定真实时间 1 倍速，请求 `{}` 或 `{"speed":1}`；其他倍率 422 |
 | POST | `/simulation/pause` | 暂停全局时钟，无请求体 |
-| POST | `/simulation/step` | 手动推进，请求 `{"seconds":60}` |
+| POST | `/simulation/step` | 离线调试推进，默认返回 409；仅 `DECOCTION_ALLOW_DEBUG_STEP=1` 开启 |
 | POST | `/simulation/scenarios` | 新增演示场景，请求 `{"count":5}` |
 | GET | `/events` | 全局或实体增量事件 |
 | GET | `/batches/{id}/telemetry` | 温度采样点 |
@@ -56,6 +56,8 @@ WebSocket 消息为 `{"type":"snapshot","data":{...}}` 或 `{"type":"heartbeat",
 | 路由 | 状态 | 数据来源 |
 |---|---|---|
 | `/overview` | 已实现 | `GET /api/v1/dashboard` |
+| `/devices` | 已实现 | `GET /api/v1/dashboard`，设备类型目录 |
+| `/devices/:kind` | 已实现 | dashboard.devices、snapshot.batches，单类型设备页面 |
 | `/simulation` | 已实现 | `GET /api/v1/simulation`、`/ws/simulation`、设备与报警操作 |
 | `/prescriptions` | 已实现 | `GET/POST /api/v1/prescriptions`、审核 |
 | `/prescriptions/:id` | 已实现 | `GET /api/v1/prescriptions/{id}`、`POST /batches` |
@@ -73,6 +75,8 @@ WebSocket 消息为 `{"type":"snapshot","data":{...}}` 或 `{"type":"heartbeat",
 | `BatchStatusTag` / `Verdict` | 已实现 | `frontend/src/components/Display.jsx` |
 | `TraceChart` | 已实现 | `frontend/src/components/TraceChart.jsx` |
 | `AppShell` / `ControlBar` | 已实现 | `frontend/src/components/AppShell.jsx` |
+| `SimulationEmptyState` | 已实现 | `frontend/src/components/SimulationEmptyState.jsx` |
+| `DeviceTypeIndex` / `DeviceOverview` | 已实现 | `frontend/src/components/DeviceOverview.jsx`（分类入口、单类型卡片与选中详情） |
 | `PrescriptionForm` / `ReviewForm` | 已实现 | `frontend/src/pages/PrescriptionForm.jsx` |
 | `EventStream` | 已实现 | `frontend/src/pages/TracePage.jsx` |
 | 设备卡片与操作 | 已实现 | `frontend/src/pages/SimulationPage.jsx` |

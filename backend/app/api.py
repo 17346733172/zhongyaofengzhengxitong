@@ -15,7 +15,7 @@ from .engine import batch_view
 from .models import (BatchCreate, ClockStart, ClockStep, DeviceCreate, OperatorAction,
                      PrescriptionCreate, Review, ScenarioCreate)
 from .service import DomainError, Service, require
-from .workflow import DEVICE_LABELS, make_steps
+from .workflow import DEFAULT_PROCESSING_SECONDS, DEVICE_LABELS, make_steps
 
 log = logging.getLogger(__name__)
 ROOT = Path(__file__).resolve().parent.parent
@@ -25,10 +25,12 @@ def page(items, offset, limit):
     return {"items": items[offset:offset + limit], "total": len(items), "offset": offset, "limit": limit}
 
 
-def create_app(db_path=None, api_key=None, enable_runner=True):
+def create_app(db_path=None, api_key=None, enable_runner=True, enable_debug_step=None):
     db_path = db_path or os.environ.get("DECOCTION_DB", str(ROOT / "data" / "simulation.db"))
     service = Service(db_path)
     key = api_key if api_key is not None else os.environ.get("DECOCTION_API_KEY", "")
+    debug_step = (os.environ.get("DECOCTION_ALLOW_DEBUG_STEP") == "1"
+                  if enable_debug_step is None else enable_debug_step)
 
     async def runner(app):
         while True:
@@ -59,7 +61,7 @@ def create_app(db_path=None, api_key=None, enable_runner=True):
 
     app = FastAPI(title="中药煎药流程仿真平台", version="0.1.0", lifespan=lifespan,
                   description="参考厚达智能北京本草方源案例的教学与流程仿真后端。"
-                              "所有时间单位为虚拟秒，温度和水量为演示参数。单进程运行。")
+                              "正常运行固定真实时间1倍速；接口时长单位为秒，温度和水量为演示参数。单进程运行。")
     app.state.service = service
     app.state.runner_error = False
     origins = os.environ.get("DECOCTION_CORS_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173")
@@ -100,8 +102,12 @@ def create_app(db_path=None, api_key=None, enable_runner=True):
                                            {"name": "演示后下组", "grams_per_dose": 5, "method": "late_add"}])
         return {"reference_url": "http://www.houdar.com/prodetail.html?appid=1.2",
                 "reference_title": "北京本草方源煎药中心应用案例",
-                "time_unit": "virtual_seconds", "pressure_model": "常压，表压恒为0 kPa",
-                "device_kinds": [{"code": str(k), "name": v} for k, v in DEVICE_LABELS.items()],
+                "time_unit": "seconds", "pressure_model": "常压，表压恒为0 kPa",
+                "debug_step_enabled": debug_step,
+                "clock_mode": "real_time", "speed": 1,
+                "device_kinds": [{"code": str(k), "name": v,
+                                  "default_processing_seconds": DEFAULT_PROCESSING_SECONDS.get(k)}
+                                 for k, v in DEVICE_LABELS.items()],
                 "herb_methods": {"normal": "常规", "pre_decoct": "先煎", "late_add": "后下（一煎末段）", "bag": "包煎"},
                 "steps": make_steps(sample.model_dump()),
                 "assumptions": ["先煎组与常规浸泡组分开处理，先煎后合药，分组细节不建模",
@@ -173,7 +179,7 @@ def create_app(db_path=None, api_key=None, enable_runner=True):
     def snapshot():
         return service.snapshot()
 
-    @router.post("/simulation/start", tags=["仿真控制"], summary="按指定倍率自动运行")
+    @router.post("/simulation/start", tags=["仿真控制"], summary="固定真实时间1倍速运行")
     def start(body: ClockStart):
         result = service.clock("start", body.speed)
         app.state.runner_error = False
@@ -183,8 +189,10 @@ def create_app(db_path=None, api_key=None, enable_runner=True):
     def pause():
         return service.clock("pause")
 
-    @router.post("/simulation/step", tags=["仿真控制"], summary="手动推进虚拟时间，精确处理工序边界")
+    @router.post("/simulation/step", tags=["开发调试"], summary="离线调试步进，正常运行默认禁用")
     def step(body: ClockStep):
+        if not debug_step:
+            raise DomainError("debug_step_disabled", "真实计时模式不支持手动推进", 409)
         return service.clock("step", body.seconds)
 
     @router.post("/simulation/scenarios", status_code=201, tags=["仿真控制"], summary="生成含普通、先煎、后下药组的匿名演示场景")

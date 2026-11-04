@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { Alert, Button, InputNumber, Menu, Space, Tag, message } from "antd";
 import { api } from "../api/client";
@@ -7,6 +7,7 @@ import { formatVirtualDuration } from "../domain/labels";
 const NAV = [
   { to: "/overview", label: "总览" },
   { to: "/simulation", label: "仿真工作台" },
+  { to: "/devices", label: "设备分类" },
   { to: "/prescriptions", label: "处方" },
   { to: "/batches", label: "批次" },
 ];
@@ -17,31 +18,40 @@ const CONNECTION_LABELS = {
   closed: { color: "error", text: "已断开" },
 };
 
-const DEFAULT_SPEED = 60;
-const DEFAULT_STEP = 3600;
+const DEFAULT_SCENARIO_COUNT = 5;
+const WALL_CLOCK_FORMAT = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
 
 /**
- * 应用外壳。顶栏常驻虚拟时钟、运行状态、倍率与连接状态；
- * 全局控制（开始/暂停/步进）与单批次控制分开，符合 DESIGN.md 的交互原则。
- * clock 为 null 表示还没拿到任何快照，此时一律显示 —，不推断暂停或倍率。
+ * 顶栏显示当前北京时间；调度进度来自后端1倍速计时，暂停时保留资源。
  */
 export function AppShell({ clock, connection, onChanged, children }) {
   const location = useLocation();
-  const [speed, setSpeed] = useState(DEFAULT_SPEED);
-  const [stepSeconds, setStepSeconds] = useState(DEFAULT_STEP);
-  const [pending, setPending] = useState(null); // "start" | "pause" | "step" | null
+  const [wallNow, setWallNow] = useState(() => new Date());
+  const [scenarioCount, setScenarioCount] = useState(DEFAULT_SCENARIO_COUNT);
+  const [pending, setPending] = useState(null);
+  const pendingRef = useRef(false);
   const running = clock?.running === true;
   const hasClock = clock !== null && clock !== undefined;
+  useEffect(() => {
+    const timer = setInterval(() => setWallNow(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const act = async (which, fn, okText) => {
+    if (pendingRef.current) return;
+    pendingRef.current = true;
     setPending(which);
     try {
       await fn();
       message.success(okText);
-      onChanged?.();
+      await onChanged?.();
     } catch (error) {
       message.error(error.message);
     } finally {
+      pendingRef.current = false;
       setPending(null);
     }
   };
@@ -55,18 +65,18 @@ export function AppShell({ clock, connection, onChanged, children }) {
         </div>
         <div className="topbar-clock">
           <Space size={8} wrap>
-            <Tag bordered={false}>{hasClock ? (running ? "自动运行" : "已暂停") : "无数据"}</Tag>
+            <Tag bordered={false}>{hasClock ? (running ? "真实计时运行" : "已暂停") : "无数据"}</Tag>
             <Tag bordered={false} color={running ? "processing" : "default"}>
-              倍率 ×{hasClock ? clock.speed : "—"}
+              真实时间 · 1 倍速
             </Tag>
-            {/* 连接状态是用户需要知道的状态变化，用 aria-live 播报；时钟每秒变数次，不播报 */}
+            {/* 连接状态播报；当前时间每秒更新，不主动播报。 */}
             <span aria-live="polite">
               <Tag color={CONNECTION_LABELS[connection]?.color}>{CONNECTION_LABELS[connection]?.text}</Tag>
             </span>
-            <span className="mono" role="timer" aria-label="虚拟时钟"
-                  style={{ fontSize: 15, fontWeight: 650 }} title="虚拟时间，非真实时间">
-              {hasClock ? formatVirtualDuration(clock.now) : "—"}
-            </span>
+            <time className="mono" role="timer" aria-label="当前北京时间" dateTime={wallNow.toISOString()}
+                  style={{ fontSize: 14, fontWeight: 650 }}>
+              {WALL_CLOCK_FORMAT.format(wallNow)}
+            </time>
           </Space>
         </div>
       </header>
@@ -84,22 +94,21 @@ export function AppShell({ clock, connection, onChanged, children }) {
             <Alert className="banner" type="warning" showIcon
                    message="与后端的实时推送已断开，正在重连；界面数据可能不是最新。" />
           ) : null}
+          <ControlBar
+            hasClock={hasClock}
+            running={running}
+            pending={pending}
+            elapsedSeconds={clock?.now}
+            scenarioCount={scenarioCount}
+            onScenarioCount={setScenarioCount}
+            onGenerate={() => act("scenario", () => api.createScenario(scenarioCount ?? DEFAULT_SCENARIO_COUNT),
+              `已新增 ${scenarioCount ?? DEFAULT_SCENARIO_COUNT} 个演示批次，可开始真实计时运行`)}
+            onStart={() => act("start", () => api.start(), "已开始真实计时运行")}
+            onPause={() => act("pause", () => api.pause(), "已暂停")}
+          />
           {children}
         </main>
       </div>
-
-      {/* 全局控制放在页面底部，避免与顶栏时钟争抢注意力 */}
-      <ControlBar
-        running={running}
-        pending={pending}
-        speed={speed}
-        stepSeconds={stepSeconds}
-        onSpeed={setSpeed}
-        onStepSeconds={setStepSeconds}
-        onStart={() => act("start", () => api.start(speed ?? DEFAULT_SPEED), "已开始自动运行")}
-        onPause={() => act("pause", () => api.pause(), "已暂停")}
-        onStep={() => act("step", () => api.step(stepSeconds ?? DEFAULT_STEP), `已推进 ${stepSeconds ?? DEFAULT_STEP} 虚拟秒`)}
-      />
     </div>
   );
 }
@@ -107,11 +116,7 @@ export function AppShell({ clock, connection, onChanged, children }) {
 function SideNav({ pathname }) {
   const navigate = useNavigate();
   const selected = NAV.find((item) => pathname.startsWith(item.to))?.to;
-  const items = [
-    ...NAV.map((item) => ({ key: item.to, label: item.label })),
-    // 外部链接自带 target，交给 <a> 处理，不参与路由跳转
-    { key: "__docs", label: <a href="/docs" target="_blank" rel="noreferrer">Swagger 调试</a> },
-  ];
+  const items = NAV.map((item) => ({ key: item.to, label: item.label }));
   return (
     <Menu
       mode="inline"
@@ -125,35 +130,37 @@ function SideNav({ pathname }) {
   );
 }
 
-function ControlBar({ running, pending, speed, stepSeconds, onSpeed, onStepSeconds, onStart, onPause, onStep }) {
+function ControlBar({ hasClock, running, pending, elapsedSeconds, scenarioCount,
+  onScenarioCount, onGenerate, onStart, onPause }) {
   // 每个按钮只在自己的请求在飞时转圈，避免点“开始”把“暂停”也置为 loading
   const spin = (which) => pending === which;
+  const disabled = !hasClock || pending !== null;
   return (
-    <section className="console" style={{ marginTop: 20 }} aria-label="全局仿真控制">
+    <section className="console simulation-controls" aria-label="全局仿真控制">
       <div className="console-head">
         <div>
           <h4>全局仿真控制</h4>
-          <span className="section-title">时间单位为虚拟秒，与真实时间无关</span>
+          <span className="section-title">按现实时间计时：1 秒就是现实 1 秒，调剂 10 分钟需实际运行 10 分钟</span>
         </div>
         <Space wrap>
           <Space.Compact>
-            <InputNumber min={0.1} max={3600} value={speed} onChange={onSpeed} style={{ width: 96 }}
-                         aria-label="自动运行倍率" />
-            <Button type="primary" loading={spin("start")} onClick={onStart} disabled={running}>开始</Button>
+            <InputNumber min={1} max={50} precision={0} value={scenarioCount} onChange={onScenarioCount}
+                         disabled={disabled} style={{ width: 88 }} aria-label="演示批次数量" />
+            <Button loading={spin("scenario")} onClick={onGenerate} disabled={disabled}>生成演示数据</Button>
           </Space.Compact>
-          <Button loading={spin("pause")} onClick={onPause} disabled={!running}>暂停</Button>
-          <Space.Compact>
-            <InputNumber min={1} max={86400} value={stepSeconds} onChange={onStepSeconds} style={{ width: 96 }}
-                         aria-label="手动推进秒数" />
-            <Button loading={spin("step")} onClick={onStep} disabled={running}>手动推进</Button>
-          </Space.Compact>
+          <Button type="primary" loading={spin("start")} onClick={onStart} disabled={disabled || running}>开始</Button>
+          <Button loading={spin("pause")} onClick={onPause} disabled={disabled || !running}>暂停</Button>
+          <span className="notice">累计运行 <span className="mono">{hasClock ? formatVirtualDuration(elapsedSeconds) : "—"}</span></span>
         </Space>
       </div>
-      {running ? (
+      <p className="notice">演示批次数量 1–50，每次生成均新增匿名处方和批次，包含常规、包煎、先煎或后下示例；生成后点击「开始」。</p>
+      {!hasClock ? (
+        <span className="notice">尚未取得仿真状态，请等待后端连接后操作。</span>
+      ) : running ? (
         <Alert className="banner" type="info" showIcon
-               message="自动运行中，手动推进已停用。需要精确控制工序边界时，请先暂停。" />
+               message="正在按真实时间运行。暂停期间不累计工序用时，继续后从原进度运行。" />
       ) : (
-        <span className="notice">已暂停。手动推进会精确处理到最近的工序完成点或后下投料点，不会跳过中间工序。</span>
+        <span className="notice">已暂停，当前设备分配与工序进度保留；点击「开始」后按真实时间继续。</span>
       )}
     </section>
   );

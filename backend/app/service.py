@@ -5,7 +5,7 @@ from uuid import uuid4
 from . import engine
 from .models import PrescriptionCreate
 from .store import Store
-from .workflow import DEVICE_LABELS, device_record, make_steps, water_plan
+from .workflow import DEFAULT_PROCESSING_SECONDS, DEVICE_LABELS, device_record, make_steps, water_plan
 
 
 class DomainError(Exception):
@@ -30,6 +30,7 @@ class Service:
 
     def on_start(self):
         with self.store.transaction() as (s, emit):
+            s["clock"]["speed"] = 1.0
             if s["clock"]["running"]:
                 s["clock"]["running"] = False
                 emit("simulation.restart_paused", "simulation", reason="服务重启后等待显式继续")
@@ -45,9 +46,11 @@ class Service:
                 return
             with self.store.transaction() as (s, emit):
                 if s["clock"]["running"]:
-                    engine.advance(s, elapsed * s["clock"]["speed"], emit)
+                    engine.advance(s, elapsed, emit)
 
     def clock(self, action, value=None):
+        if action == "start" and value not in (None, 1):
+            raise DomainError("real_time_only", "仅支持真实时间1倍速运行")
         with self.store.lock:
             if action != "step":
                 self.auto_tick()
@@ -57,7 +60,7 @@ class Service:
                         raise DomainError("clock_running", "自动运行中，请先暂停再手动推进")
                     engine.advance(s, value, emit)
                 elif action == "start":
-                    s["clock"].update(running=True, speed=value)
+                    s["clock"].update(running=True, speed=1.0)
                     engine.advance(s, 0, emit)
                 elif action == "pause":
                     s["clock"]["running"] = False
@@ -210,7 +213,7 @@ class Service:
                 emit("prescription.reviewed", p["id"], **p["review"])
                 b = self._batch(s, emit, p["id"])
                 ids.append(b["id"])
-        return {"batch_ids": ids, "count": count, "message": "演示批次已创建，请手动推进或启动仿真"}
+        return {"batch_ids": ids, "count": count, "message": "演示批次已创建，请开始真实计时运行"}
 
     def snapshot(self):
         s = self.store.read()
@@ -242,6 +245,7 @@ class Service:
         for d in s["devices"].values():
             duration = s["clock"]["now"] - d["added_at"]
             devices.append({**d, "kind_name": DEVICE_LABELS[d["kind"]],
+                            "default_processing_seconds": DEFAULT_PROCESSING_SECONDS.get(d["kind"]),
                             "utilization_percent": round(d["productive_seconds"] / duration * 100, 2) if duration else 0})
         return {"clock": s["clock"], "total_prescriptions": len(s["prescriptions"]),
                 "batch_counts": counts, "dispatched_bags": dispatched,

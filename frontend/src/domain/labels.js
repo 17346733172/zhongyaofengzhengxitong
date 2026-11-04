@@ -20,6 +20,12 @@ export const DEVICE_KIND_LABELS = {
   washer: "清洗机",
 };
 
+/** 短显示编号；请求、批次关联和设备操作仍使用后端原始 id。 */
+export function deviceDisplayCode(device) {
+  const sequence = device.name?.match(/\s+(\d+)$/)?.[1];
+  return sequence ? `${device.kind}-${sequence.padStart(2, "0")}` : device.name || device.id;
+}
+
 /** 设备状态 → 状态灯 class 后缀，与 app.css 的 .lamp-* 对应 */
 export const DEVICE_STATUS_LAMP = {
   idle: "idle",

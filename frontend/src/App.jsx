@@ -8,6 +8,7 @@ import { BatchListPage } from "./pages/BatchListPage";
 import { BatchDetailPage } from "./pages/BatchDetailPage";
 import { PrescriptionDetailPage, PrescriptionListPage } from "./pages/PrescriptionPages";
 import { TracePage } from "./pages/TracePage";
+import { DevicePage } from "./pages/DevicePages";
 import { useSimulation } from "./hooks/useSimulation";
 
 export default function App() {
@@ -24,11 +25,13 @@ export default function App() {
       <AppShell clock={clock} connection={status} onChanged={refresh}>
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
-          <Route path="/overview" element={<OverviewPage clock={clock} />} />
+          <Route path="/overview" element={<OverviewPage clock={clock} lastEventId={snapshot?.last_event_id} />} />
+          <Route path="/devices" element={<DevicePage clock={clock} lastEventId={snapshot?.last_event_id} batches={snapshot?.batches} />} />
+          <Route path="/devices/:kind" element={<DevicePage clock={clock} lastEventId={snapshot?.last_event_id} batches={snapshot?.batches} />} />
           <Route path="/simulation" element={<SimulationPage snapshot={snapshot} onChanged={refresh} />} />
-          <Route path="/prescriptions" element={<PrescriptionListPage />} />
+          <Route path="/prescriptions" element={<PrescriptionListPage batchCount={snapshot?.batches?.length} />} />
           <Route path="/prescriptions/:prescriptionId" element={<PrescriptionDetailPage />} />
-          <Route path="/batches" element={<BatchListPage clockNow={clock?.now} />} />
+          <Route path="/batches" element={<BatchListPage clockNow={clock?.now} lastEventId={snapshot?.last_event_id} />} />
           <Route path="/batches/:batchId" element={<BatchDetailPage />} />
           <Route path="/trace/:traceCode" element={<TracePage />} />
           <Route path="*" element={<div className="console"><Tag color="error">页面不存在</Tag></div>} />

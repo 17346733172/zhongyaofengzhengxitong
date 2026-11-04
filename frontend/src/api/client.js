@@ -68,9 +68,9 @@ const post = (path, body = {}) => request(path, { method: "POST", body });
 export const api = {
   // 仿真控制与快照
   snapshot: () => get("/simulation"),
-  start: (speed) => post("/simulation/start", { speed }),
+  start: () => post("/simulation/start", { speed: 1 }),
   pause: () => post("/simulation/pause"),
-  step: (seconds) => post("/simulation/step", { seconds }),
+  createScenario: (count) => post("/simulation/scenarios", { count }),
   dashboard: () => get("/dashboard"),
   workflow: () => get("/workflow"),
 

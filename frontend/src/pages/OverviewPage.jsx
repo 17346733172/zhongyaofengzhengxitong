@@ -1,12 +1,13 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Statistic, Table, Tag } from "antd";
+import { Statistic, Tag } from "antd";
 import { api } from "../api/client";
-import { Chip, DeviceStatusTag, PanelSkeleton } from "../components/Display";
-import { DEVICE_KIND_LABELS, formatPercent, formatVirtualDuration } from "../domain/labels";
+import { Chip, PanelSkeleton } from "../components/Display";
+import { DeviceTypeIndex } from "../components/DeviceOverview";
+import { SimulationEmptyState } from "../components/SimulationEmptyState";
 
-/** 总览页。数据源 GET /api/v1/dashboard，全部为虚拟时间统计。 */
-export function OverviewPage({ clock }) {
+/** 总览页。数据源 GET /api/v1/dashboard，按累计运行时间统计。 */
+export function OverviewPage({ clock, lastEventId }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
 
@@ -14,7 +15,7 @@ export function OverviewPage({ clock }) {
     let alive = true;
     api.dashboard().then((d) => alive && (setData(d), setError(null))).catch((e) => alive && setError(e.message));
     return () => { alive = false; };
-  }, [clock?.now]);
+  }, [clock?.now, lastEventId]);
 
   if (error) return <AlertError message={error} />;
   if (!data) return <PanelSkeleton />;
@@ -23,9 +24,10 @@ export function OverviewPage({ clock }) {
 
   return (
     <>
+      {Object.values(counts).every((count) => count === 0) ? <SimulationEmptyState /> : null}
       <section className="desk" aria-label="总体指标">
         <div className="section-head">
-          <span className="section-title">总体指标 · 虚拟时间</span>
+          <span className="section-title">总体指标 · 真实计时</span>
           <span className="notice">利用率与吞吐量为仿真统计，非实际工厂性能承诺</span>
         </div>
         <div className="desk-gauges">
@@ -38,7 +40,7 @@ export function OverviewPage({ clock }) {
           <Statistic title="已配发袋数" value={data.dispatched_bags} />
           <Statistic title="活跃报警" value={data.active_alarms}
                      valueStyle={{ color: data.active_alarms ? "var(--bad)" : undefined }} />
-          <Statistic title="袋 / 虚拟小时" value={data.bags_per_virtual_hour} />
+          <Statistic title="袋 / 运行小时" value={data.bags_per_virtual_hour} />
         </div>
       </section>
 
@@ -58,43 +60,10 @@ export function OverviewPage({ clock }) {
 
       <section aria-label="设备利用率" style={{ marginTop: 24 }}>
         <div className="section-head">
-          <span className="section-title">设备状态与利用率</span>
-          <Link to="/simulation">前往仿真工作台 →</Link>
+          <span className="section-title">设备分类</span>
+          <Link to="/devices">查看设备分类 →</Link>
         </div>
-        <div className="console" style={{ padding: 0, borderTop: "3px solid var(--ink)" }}>
-          <Table
-            size="small" scroll={{ x: "max-content" }}
-            rowKey="id"
-            pagination={false}
-            dataSource={data.devices || []}
-            columns={[
-              { title: "设备", dataIndex: "name", render: (v, r) => <span className="mono">{v}</span> },
-              { title: "类型", dataIndex: "kind", render: (v) => DEVICE_KIND_LABELS[v] || v },
-              { title: "状态", dataIndex: "status", render: (v) => <DeviceStatusTag status={v} /> },
-              {
-                title: "所属批次", dataIndex: "batch_id",
-                render: (v) => v ? <Link to={`/batches/${v}`} className="mono">{v}</Link>
-                                 : <span className="notice">—</span>,
-              },
-              {
-                title: "占用时长", dataIndex: "occupied_seconds",
-                render: (v) => <span className="mono">{formatVirtualDuration(v)}</span>,
-              },
-              {
-                title: "利用率", dataIndex: "utilization_percent",
-                render: (v) => (
-                  <span className="mono">
-                    {formatPercent(v)}%
-                    <Tag bordered={false} style={{ marginLeft: 6 }}
-                         color={v >= 60 ? "success" : v >= 20 ? "processing" : "default"}>
-                      {v >= 60 ? "高" : v >= 20 ? "中" : "低"}
-                    </Tag>
-                  </span>
-                ),
-              },
-            ]}
-          />
-        </div>
+        <DeviceTypeIndex devices={data.devices} />
       </section>
     </>
   );

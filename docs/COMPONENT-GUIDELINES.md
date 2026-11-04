@@ -12,7 +12,9 @@
 | `Chip` | 已实现 | `components/Display.jsx` | label、value、unit | 弱化 label + 等宽 value |
 | `BatchStatusTag` / `Verdict` | 已实现 | `components/Display.jsx` | batch | 状态标签、进度槽、等待原因 |
 | `TraceChart` | 已实现 | `components/TraceChart.jsx` | telemetry.point 列表 | SVG 曲线，纯展示 |
-| `AppShell` / `ControlBar` | 已实现 | `components/AppShell.jsx` | clock、连接状态 | start / pause / step |
+| `AppShell` / `ControlBar` | 已实现 | `components/AppShell.jsx` | clock、连接状态 | 当前北京时间、生成演示数据、真实计时开始/暂停 |
+| `SimulationEmptyState` | 已实现 | `components/SimulationEmptyState.jsx` | — | 总览与工作台空批次说明、生成及录入指引 |
+| `DeviceTypeIndex` / `DeviceOverview` | 已实现 | `components/DeviceOverview.jsx` | kind、dashboard.devices、snapshot.batches | 分类入口进入独立路由；单类型设备卡片、选中详情与利用率 |
 | 设备卡片与操作 | 已实现 | `pages/SimulationPage.jsx` | device、alarm | 故障、修复、停用、启用 |
 | 批次时间轴 | 已实现 | `pages/BatchDetailPage.jsx` | steps、waiting_reason | 工序状态与时刻 |
 | `PrescriptionForm` / `ReviewForm` | 已实现 | `pages/PrescriptionForm.jsx` | herbs、recipe | 字段校验、保存、审核 |
@@ -20,6 +22,8 @@
 | `TracePanel` | 规划 | — | batch、prescription、events | 悬浮详情与事件筛选 |
 
 页面组件只负责取数与提交操作，不自行推导业务状态；暂停、取消后的清洗等中间态一律以后端返回为准。
+
+工作台设备卡片按类型及编号排列。标题通过 `deviceDisplayCode` 从名称编号生成短显示编号（如 `dispenser-03`）；自定义名称没有编号时使用名称。原始 `device.id` 保留在标题提示中，设备选择、请求和批次关联始终使用原始 ID，不用显示编号替代数据库标识。
 
 ## 接口和依赖
 
@@ -31,7 +35,7 @@ WebSocket 是快照通道，历史事件必须使用事件接口补齐。遥测�
 
 ## 样式约定
 
-共享颜色与间距集中在 `frontend/src/styles/tokens.css`，布局与组件样式在 `frontend/src/styles/app.css`，来源是 `DESIGN.md`；组件不得随意定义不同状态颜色。数字明确标注单位，时间统一标注「虚拟秒」并注明非真实记录时间。表格列保留稳定顺序，空值用 `—` 表示。所有数值使用等宽字体与 `tabular-nums`。
+共享颜色与间距集中在 `frontend/src/styles/tokens.css`，布局与组件样式在 `frontend/src/styles/app.css`，来源是 `DESIGN.md`；组件不得随意定义不同状态颜色。数字明确标注单位，顶栏显示当前北京时间，工序时长与累计运行时间单独标注。工艺表单按分钟输入、提交时转换为带 `_seconds` 的秒字段。表格列保留稳定顺序，空值用 `—` 表示。所有数值使用等宽字体与 `tabular-nums`。
 
 ## 无障碍和状态
 

@@ -12,11 +12,11 @@
     {"name": "演示包煎组", "grams_per_dose": 9, "method": "bag"}
   ],
   "recipe": {
-    "soak_seconds": 1800,
-    "pre_decoct_seconds": 1200,
-    "heat_seconds": 300,
-    "first_decoct_seconds": 1800,
-    "second_decoct_seconds": 1200,
+    "soak_seconds": 300,
+    "pre_decoct_seconds": 900,
+    "heat_seconds": 0,
+    "first_decoct_seconds": 900,
+    "second_decoct_seconds": 900,
     "late_add_seconds": 300,
     "target_temperature_c": 96,
     "water_ml_per_g": 8,

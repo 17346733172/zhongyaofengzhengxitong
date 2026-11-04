@@ -28,7 +28,7 @@ python -m venv .venv
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-服务运行后，可用 `scripts/demo.py` 进行端到端演示。它会暂停自动时钟、追加演示批次并手动推进；请使用专门演示数据库。集成测试使用 `data/tests/run-*` 临时目录，完成后自动清理自身目录。
+正常服务按真实时间 1 倍速运行，不开放离线步进。需要快速端到端回归时，先指定独立数据库，再设置 `DECOCTION_ALLOW_DEBUG_STEP=1` 启动服务，使用 `scripts/demo.py`；脚本会先检查调试开关，再暂停时钟、追加批次并推进。集成测试显式启用调试步进，使用 `data/tests/run-*` 临时目录，完成后自动清理自身目录。
 
 ## 调度变更要求
 

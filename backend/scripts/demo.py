@@ -26,6 +26,8 @@ def main():
             return json.load(response)
 
     try:
+        if not request("/workflow").get("debug_step_enabled", False):
+            raise SystemExit("离线演示脚本仅用于独立调试库；需显式启用 DECOCTION_ALLOW_DEBUG_STEP=1。正常运行请在页面点击开始。")
         request("/simulation/pause", method="POST")
         scene = request("/simulation/scenarios", {"count": args.count}, "POST")
         request("/simulation/step", {"seconds": 86400}, "POST")

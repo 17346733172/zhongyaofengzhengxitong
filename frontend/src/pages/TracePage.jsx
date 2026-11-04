@@ -35,9 +35,9 @@ function eventSummary(type, payload) {
     case "alarm.acknowledged": return `报警确认 · ${p.operator || ""}`;
     case "alarm.resolved": return "报警解决";
     case "telemetry.point": return `${p.stage} · ${p.temperature_c}℃ · 工序已用 ${p.stage_elapsed_seconds}s`;
-    case "simulation.start": return `自动运行，倍率 ${p.value}`;
+    case "simulation.start": return p.value === 1 ? "按真实时间1倍速运行" : `历史倍速运行，倍率 ${p.value}`;
     case "simulation.pause": return "全局暂停";
-    case "simulation.step": return `手动推进 ${p.value} 虚拟秒`;
+    case "simulation.step": return `开发调试推进 ${p.value} 秒`;
     case "simulation.restart_paused": return `服务重启后暂停：${p.reason || ""}`;
     case "simulation.runner_failed": return `调度器异常：${p.reason || ""}`;
     default: return null;
@@ -116,7 +116,7 @@ export function TracePage() {
       </div>
 
       <Alert className="banner" type="info" showIcon
-             message="事件按全局递增 ID 记录，sim_time 为虚拟秒，real_time 为服务端 UTC 记录时间。" />
+             message="记录时间为事件实际发生时间；累计运行计时不包含全局暂停。历史记录可能使用旧版倍速或调试步进。" />
 
       <Verdict batch={batch} />
 
@@ -186,8 +186,12 @@ function EventStream({ title, subtitle, events, done, loading, onMore }) {
         columns={[
           { title: "ID", dataIndex: "id", width: 64, render: (v) => <span className="mono">{v}</span> },
           {
-            title: "虚拟时刻", dataIndex: "sim_time", width: 104,
+            title: "累计运行", dataIndex: "sim_time", width: 104,
             render: (v) => <span className="mono">{formatVirtualDuration(v)}</span>,
+          },
+          {
+            title: "记录时间（北京）", dataIndex: "real_time", width: 184,
+            render: (v) => <span className="mono">{v ? new Date(v).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }) : "—"}</span>,
           },
           { title: "类型", dataIndex: "type", width: 168, render: (v) => <span className="mono">{v}</span> },
           {

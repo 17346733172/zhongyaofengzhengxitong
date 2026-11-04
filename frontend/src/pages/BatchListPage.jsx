@@ -15,13 +15,13 @@ const STATUS_FILTERS = [
 ];
 
 /** 批次列表。数据源 GET /api/v1/batches，支持 status 筛选与 offset/limit 分页。 */
-export function BatchListPage({ clockNow }) {
+export function BatchListPage({ clockNow, lastEventId }) {
   const [status, setStatus] = useState(undefined);
   const [offset, setOffset] = useState(0);
   const [data, setData] = useState({ items: [], total: 0, limit: 50 });
   const [error, setError] = useState(null);
   const limit = 50;
-  // 批次状态随虚拟时钟变化，因此订阅 clockNow 刷新；用序号丢弃乱序到达的旧响应
+  // 时钟推进与暂停时的建批次、故障等事件都需要刷新；用序号丢弃乱序到达的旧响应
   const seqRef = useRef(0);
 
   const load = useCallback(async () => {
@@ -37,7 +37,7 @@ export function BatchListPage({ clockNow }) {
     }
   }, [status, offset]);
 
-  useEffect(() => { load(); }, [load, clockNow]);
+  useEffect(() => { load(); }, [load, clockNow, lastEventId]);
 
   return (
     <section aria-label="批次列表">

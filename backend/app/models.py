@@ -1,4 +1,4 @@
-"""Public API contracts. All times are virtual seconds; amounts are explicit units."""
+"""API contracts: durations in seconds, normal operation uses a real-time 1x clock."""
 
 from enum import StrEnum
 from typing import Annotated, Literal
@@ -36,11 +36,11 @@ class Herb(Model):
 
 
 class Recipe(Model):
-    soak_seconds: float = Field(default=1800, ge=1, le=14400)
-    pre_decoct_seconds: float = Field(default=1200, ge=1, le=7200)
-    heat_seconds: float = Field(default=300, ge=1, le=3600)
-    first_decoct_seconds: float = Field(default=1800, ge=1, le=7200)
-    second_decoct_seconds: float = Field(default=1200, ge=0, le=7200)
+    soak_seconds: float = Field(default=300, ge=1, le=14400)
+    pre_decoct_seconds: float = Field(default=900, ge=1, le=7200)
+    heat_seconds: float = Field(default=0, ge=0, le=3600, description="默认并入煎煮，不额外占用升温时间")
+    first_decoct_seconds: float = Field(default=900, ge=1, le=7200)
+    second_decoct_seconds: float = Field(default=900, ge=0, le=7200)
     late_add_seconds: float = Field(default=300, ge=1, le=3600)
     target_temperature_c: float = Field(default=96, ge=70, le=100)
     water_ml_per_g: float = Field(default=8, ge=1, le=30)
@@ -95,7 +95,7 @@ class ClockStep(Model):
 
 
 class ClockStart(Model):
-    speed: float = Field(default=60, ge=0.1, le=3600)
+    speed: float = Field(default=1, ge=1, le=1, description="固定真实时间1倍速")
 
 
 class ScenarioCreate(Model):
