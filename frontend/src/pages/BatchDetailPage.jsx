@@ -1,53 +1,83 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Button, Descriptions, Popconfirm, Space, Tag, message } from "antd";
 import { api } from "../api/client";
 import { BatchStatusTag, Chip, PanelSkeleton, Verdict } from "../components/Display";
 import { TraceChart } from "../components/TraceChart";
 import {
-  BATCH_STATUS_LABELS, HERB_METHOD_LABELS, PRESCRIPTION_STATUS_LABELS,
+  HERB_METHOD_LABELS, PRESCRIPTION_STATUS_LABELS,
   STAGE_STATUS_LABELS, formatTemperature, formatVirtualDuration,
 } from "../domain/labels";
 
-/** 批次详情。数据源 GET /api/v1/batches/{id}、/telemetry、/trace/{code}。 */
-export function BatchDetailPage() {
-  const { batchId } = useParams();
-  const [batch, setBatch] = useState(null);
-  const [prescription, setPrescription] = useState(null);
-  const [telemetry, setTelemetry] = useState([]);
+function useBatchTelemetry(batchId, live) {
+  const [points, setPoints] = useState([]);
   const [error, setError] = useState(null);
-  const [busy, setBusy] = useState(false);
+  const cursor = useRef(0);
 
-  const load = useCallback(async () => {
-    try {
-      const b = await api.batch(batchId);
-      setBatch(b);
-      setError(null);
-      const p = await api.prescription(b.prescription_id).catch(() => null);
-      setPrescription(p);
-      // 采样点可能跨多页，按 next_after_id 续拉至取尽
-      const points = [];
-      let after = 0;
-      for (let i = 0; i < 20; i += 1) {
-        const page = await api.telemetry(batchId, after);
-        points.push(...page.items);
-        after = page.next_after_id;
-        if (!page.items.length) break;
+  useEffect(() => {
+    const controller = new AbortController();
+    const { signal } = controller;
+    let timer;
+
+    const load = async () => {
+      try {
+        let page;
+        do {
+          page = await api.telemetry(batchId, cursor.current, signal);
+          if (signal.aborted) return;
+          cursor.current = page.next_after_id;
+          if (page.items.length) {
+            const samples = page.items.map(({ sim_time, payload }) => ({ sim_time, temperature_c: payload.temperature_c }));
+            setPoints((previous) => [...previous, ...samples]);
+          }
+        } while (page.items.length === 1000);
+        setError(null);
+        if (live) timer = setTimeout(load, 2000);
+      } catch (reason) {
+        if (!signal.aborted) {
+          setError(reason.message);
+          timer = setTimeout(load, 2000);
+        }
       }
-      setTelemetry(points);
-    } catch (e) {
-      setError(e.message);
-    }
-  }, [batchId]);
+    };
+    load();
+    return () => {
+      controller.abort();
+      clearTimeout(timer);
+    };
+  }, [batchId, live]);
 
-  useEffect(() => { load(); }, [load]);
+  return { points, error };
+}
+
+export function BatchDetailPage({ snapshot, onChanged }) {
+  const { batchId } = useParams();
+  if (!snapshot) return <PanelSkeleton />;
+  const batch = snapshot.batches.find((item) => item.id === batchId);
+  if (!batch) return <div className="console"><Tag color="error">批次不存在</Tag> <Link to="/batches">返回批次列表</Link></div>;
+  return <BatchDetails key={batchId} batch={batch} onChanged={onChanged} />;
+}
+
+function BatchDetails({ batch, onChanged }) {
+  const [prescription, setPrescription] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const terminal = batch.status === "completed" || batch.status === "cancelled";
+  const { points, error: telemetryError } = useBatchTelemetry(batch.id, !terminal);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    api.prescription(batch.prescription_id, controller.signal).then((data) => {
+      if (!controller.signal.aborted) setPrescription(data);
+    }).catch(() => {});
+    return () => controller.abort();
+  }, [batch.prescription_id]);
 
   const act = async (fn, okText) => {
     setBusy(true);
     try {
       await fn();
       message.success(okText);
-      await load();
+      await onChanged();
     } catch (e) {
       message.error(e.message);
     } finally {
@@ -55,10 +85,6 @@ export function BatchDetailPage() {
     }
   };
 
-  if (error) return <div className="console"><Tag color="error">{error}</Tag><div style={{ marginTop: 10 }}><Link to="/batches">返回批次列表</Link></div></div>;
-  if (!batch) return <PanelSkeleton />;
-
-  const terminal = batch.status === "completed" || batch.status === "cancelled";
   const water = batch.water_plan || {};
   const recipe = prescription?.recipe || {};
   const currentStep = batch.steps?.[batch.stage_index] || null;
@@ -185,14 +211,11 @@ export function BatchDetailPage() {
       <section className="console" style={{ marginTop: 16 }} aria-label="温度曲线">
         <div className="section-head">
           <span className="section-title">温度过程曲线 · 仿真采样</span>
-          <span className="notice">横轴为累计运行秒数；采样发生在阶段边界与计时推进时，非真实传感器数据</span>
+          <span className="notice">横轴为累计运行秒数，数据来自仿真采样</span>
         </div>
+        {telemetryError ? <Alert type="warning" showIcon message={`温度采样暂时无法读取，正在重试。${telemetryError}`} /> : null}
         <div className="trace-wrap">
-          <TraceChart points={telemetry.map((e) => ({
-            sim_time: e.sim_time,
-            temperature_c: e.payload?.temperature_c ?? 0,
-            stage: e.payload?.stage,
-          }))} />
+          <TraceChart points={points} />
         </div>
       </section>
 

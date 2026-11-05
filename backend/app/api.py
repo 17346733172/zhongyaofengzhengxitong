@@ -253,7 +253,7 @@ def create_app(db_path=None, api_key=None, enable_runner=True, enable_debug_step
                 # Heartbeat detects disconnected idle clients and bounds resource use.
                 else:
                     await ws.send_json({"type": "heartbeat", "last_event_id": data["last_event_id"]})
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(1)
         except (WebSocketDisconnect, RuntimeError, OSError):
             pass
 

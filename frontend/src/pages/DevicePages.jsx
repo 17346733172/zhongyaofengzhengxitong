@@ -1,26 +1,15 @@
-import { useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Tag } from "antd";
-import { api } from "../api/client";
 import { DeviceOverview, DeviceTypeIndex } from "../components/DeviceOverview";
 import { PanelSkeleton } from "../components/Display";
 import { DEVICE_KIND_LABELS } from "../domain/labels";
+import { useDashboard } from "../hooks/useDashboard";
 
 /** /devices 为类型入口；/devices/:kind 只展示指定类型的设备。 */
-export function DevicePage({ clock, lastEventId, batches }) {
+export function DevicePage({ snapshot }) {
   const { kind } = useParams();
   const validKind = kind === undefined || Object.hasOwn(DEVICE_KIND_LABELS, kind);
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    if (!validKind) return;
-    let alive = true;
-    api.dashboard().then((result) => {
-      if (alive) { setData(result); setError(null); }
-    }).catch((reason) => { if (alive) setError(reason.message); });
-    return () => { alive = false; };
-  }, [clock?.now, lastEventId, validKind]);
+  const { data, error } = useDashboard(snapshot, validKind);
 
   if (!validKind) {
     return <div className="console"><Tag color="error">设备类型不存在</Tag><p><Link to="/devices">返回设备分类</Link></p></div>;
@@ -37,7 +26,7 @@ export function DevicePage({ clock, lastEventId, batches }) {
         <Link to={kind ? "/devices" : "/overview"}>{kind ? "← 返回设备分类" : "← 返回总览"}</Link>
       </div>
       {error ? <div className="console"><Tag color="error">{error}</Tag></div> : !data ? <PanelSkeleton /> : kind ? (
-        <DeviceOverview key={kind} kind={kind} devices={data.devices} batches={batches} />
+        <DeviceOverview key={kind} kind={kind} devices={data.devices} batches={snapshot?.batches} />
       ) : <DeviceTypeIndex devices={data.devices} />}
     </section>
   );

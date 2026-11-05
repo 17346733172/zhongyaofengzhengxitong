@@ -1,21 +1,12 @@
-import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Statistic, Tag } from "antd";
-import { api } from "../api/client";
 import { Chip, PanelSkeleton } from "../components/Display";
 import { DeviceTypeIndex } from "../components/DeviceOverview";
 import { SimulationEmptyState } from "../components/SimulationEmptyState";
+import { useDashboard } from "../hooks/useDashboard";
 
-/** 总览页。数据源 GET /api/v1/dashboard，按累计运行时间统计。 */
-export function OverviewPage({ clock, lastEventId }) {
-  const [data, setData] = useState(null);
-  const [error, setError] = useState(null);
-
-  useEffect(() => {
-    let alive = true;
-    api.dashboard().then((d) => alive && (setData(d), setError(null))).catch((e) => alive && setError(e.message));
-    return () => { alive = false; };
-  }, [clock?.now, lastEventId]);
+export function OverviewPage({ snapshot }) {
+  const { data, error } = useDashboard(snapshot);
 
   if (error) return <AlertError message={error} />;
   if (!data) return <PanelSkeleton />;
@@ -69,6 +60,6 @@ export function OverviewPage({ clock, lastEventId }) {
   );
 }
 
-export function AlertError({ message }) {
+function AlertError({ message }) {
   return <div className="console"><Tag color="error">{message}</Tag></div>;
 }

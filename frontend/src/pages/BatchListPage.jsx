@@ -1,8 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import { Space, Table, Tag } from "antd";
-import { api } from "../api/client";
-import { ACCENT_COLOR, BatchStatusTag } from "../components/Display";
+import { ACCENT_COLOR, BatchStatusTag, PanelSkeleton } from "../components/Display";
 import { formatTemperature, formatVirtualDuration } from "../domain/labels";
 
 const STATUS_FILTERS = [
@@ -14,35 +13,18 @@ const STATUS_FILTERS = [
   { value: "cancelled", label: "已取消" },
 ];
 
-/** 批次列表。数据源 GET /api/v1/batches，支持 status 筛选与 offset/limit 分页。 */
-export function BatchListPage({ clockNow, lastEventId }) {
+export function BatchListPage({ batches }) {
   const [status, setStatus] = useState(undefined);
   const [offset, setOffset] = useState(0);
-  const [data, setData] = useState({ items: [], total: 0, limit: 50 });
-  const [error, setError] = useState(null);
   const limit = 50;
-  // 时钟推进与暂停时的建批次、故障等事件都需要刷新；用序号丢弃乱序到达的旧响应
-  const seqRef = useRef(0);
-
-  const load = useCallback(async () => {
-    const seq = ++seqRef.current;
-    try {
-      const page = await api.batches({ status, offset, limit });
-      if (seq === seqRef.current) {
-        setData(page);
-        setError(null);
-      }
-    } catch (e) {
-      if (seq === seqRef.current) setError(e.message);
-    }
-  }, [status, offset]);
-
-  useEffect(() => { load(); }, [load, clockNow, lastEventId]);
+  if (!batches) return <PanelSkeleton />;
+  const filtered = status ? batches.filter((batch) => batch.status === status) : batches;
+  const pageOffset = Math.min(offset, Math.floor(Math.max(0, filtered.length - 1) / limit) * limit);
 
   return (
     <section aria-label="批次列表">
       <div className="section-head">
-        <span className="section-title">批次 · 共 {data.total} 个</span>
+        <span className="section-title">批次 · 共 {filtered.length} 个</span>
         <Space size={4} wrap>
           {STATUS_FILTERS.map((f) => (
             <Tag key={f.label}
@@ -54,19 +36,18 @@ export function BatchListPage({ clockNow, lastEventId }) {
           ))}
         </Space>
       </div>
-      {error ? <Tag color="error">{error}</Tag> : null}
       <div className="console" style={{ padding: 0, borderTop: "3px solid var(--ink)" }}>
         <Table
           size="small" scroll={{ x: "max-content" }}
           rowKey="id"
           pagination={{
-            current: offset / limit + 1,
+            current: pageOffset / limit + 1,
             pageSize: limit,
-            total: data.total,
+            total: filtered.length,
             showSizeChanger: false,
             onChange: (page) => setOffset((page - 1) * limit),
           }}
-          dataSource={data.items}
+          dataSource={filtered.slice(pageOffset, pageOffset + limit)}
           columns={[
             { title: "序号", dataIndex: "sequence", width: 64, render: (v) => <span className="mono">#{v}</span> },
             { title: "追溯码", dataIndex: "trace_code", render: (v, r) => <Link to={`/batches/${r.id}`} className="mono">{v}</Link> },

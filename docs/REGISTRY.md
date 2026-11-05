@@ -47,22 +47,22 @@
 
 ## 推送与事件约定
 
-WebSocket 消息为 `{"type":"snapshot","data":{...}}` 或 `{"type":"heartbeat","last_event_id":123}`。快照含 `clock,batches,devices,alarms,last_event_id`。只读连接不支持发送控制命令，操作仍使用 REST。断线后重新取快照，再按已保存事件 ID 拉取遗漏事件。
+WebSocket 约每秒发送 `{"type":"snapshot","data":{...}}` 或 `{"type":"heartbeat","last_event_id":123}`。REST 和 WebSocket 快照均含 `clock,batches,devices,alarms,last_event_id,summary`。`summary` 提供与 `/dashboard` 一致的总体指标，`devices` 附带默认处理时长及利用率。操作使用 REST，断线重连时通过 REST 补取快照。
 
-事件类型包含 `prescription.*`、`batch.*`、`stage.started/completed`、`ingredient.late_added`、`product.dispatched`、`pot.reserved/cleaned`、`device.*`、`alarm.*`、`simulation.*` 和 `telemetry.point`。遥测在阶段边界及每次推进末尾采样，并非固定频率传感器数据。
+事件类型包含 `prescription.*`、`batch.*`、`stage.started/completed`、`ingredient.late_added`、`product.dispatched`、`pot.reserved/cleaned`、`device.*`、`alarm.*`、`simulation.*` 和 `telemetry.point`。遥测在阶段边界和运行中采样，周期采样间隔至少为 5 个仿真秒。
 
 ## 前端页面登记
 
 | 路由 | 状态 | 数据来源 |
 |---|---|---|
-| `/overview` | 已实现 | `GET /api/v1/dashboard` |
-| `/devices` | 已实现 | `GET /api/v1/dashboard`，设备类型目录 |
-| `/devices/:kind` | 已实现 | dashboard.devices、snapshot.batches，单类型设备页面 |
+| `/overview` | 已实现 | 仿真快照的 `summary` 和 `devices` |
+| `/devices` | 已实现 | 仿真快照的 `devices`，设备类型目录 |
+| `/devices/:kind` | 已实现 | 仿真快照的 `devices` 和 `batches`，单类型设备页面 |
 | `/simulation` | 已实现 | `GET /api/v1/simulation`、`/ws/simulation`、设备与报警操作 |
 | `/prescriptions` | 已实现 | `GET/POST /api/v1/prescriptions`、审核 |
 | `/prescriptions/:id` | 已实现 | `GET /api/v1/prescriptions/{id}`、`POST /batches` |
-| `/batches` | 已实现 | `GET /api/v1/batches` |
-| `/batches/:id` | 已实现 | 批次、`/telemetry` |
+| `/batches` | 已实现 | 仿真快照的 `batches`，页面内筛选和分页 |
+| `/batches/:id` | 已实现 | 仿真快照的批次、按游标增量读取 `/telemetry` |
 | `/trace/:code` | 已实现 | `GET /api/v1/trace/{code}`、`/events?entity_id=` |
 | `/alarms` | 规划 | `GET /api/v1/alarms`（当前报警内嵌在仿真工作台） |
 

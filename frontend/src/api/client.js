@@ -19,7 +19,7 @@ export class ApiError extends Error {
   }
 }
 
-async function request(path, { method = "GET", body } = {}) {
+async function request(path, { method = "GET", body, signal } = {}) {
   const headers = { Accept: "application/json" };
   if (body !== undefined) headers["Content-Type"] = "application/json";
   if (API_KEY) headers["X-API-Key"] = API_KEY;
@@ -29,9 +29,11 @@ async function request(path, { method = "GET", body } = {}) {
     response = await fetch(`${BASE}/api/v1${path}`, {
       method,
       headers,
+      signal,
       body: body === undefined ? undefined : JSON.stringify(body),
     });
-  } catch {
+  } catch (error) {
+    if (signal?.aborted) throw error;
     throw new ApiError(0, "network_error", "无法连接后端服务，请确认服务已启动");
   }
 
@@ -62,52 +64,41 @@ async function request(path, { method = "GET", body } = {}) {
   return payload;
 }
 
-const get = (path) => request(path);
+const get = (path, signal) => request(path, { signal });
 const post = (path, body = {}) => request(path, { method: "POST", body });
 
 export const api = {
   // 仿真控制与快照
-  snapshot: () => get("/simulation"),
+  snapshot: (signal) => get("/simulation", signal),
   start: () => post("/simulation/start", { speed: 1 }),
   pause: () => post("/simulation/pause"),
   createScenario: (count) => post("/simulation/scenarios", { count }),
-  dashboard: () => get("/dashboard"),
-  workflow: () => get("/workflow"),
+  dashboard: (signal) => get("/dashboard", signal),
 
   // 批次
-  batches: (params = {}) => {
-    const query = new URLSearchParams();
-    if (params.status) query.set("status", params.status);
-    if (params.offset) query.set("offset", String(params.offset));
-    if (params.limit) query.set("limit", String(params.limit));
-    const suffix = query.toString();
-    return get(`/batches${suffix ? `?${suffix}` : ""}`);
-  },
   batch: (id) => get(`/batches/${id}`),
   createBatch: (prescriptionId) => post("/batches", { prescription_id: prescriptionId }),
   batchAction: (id, action) => post(`/batches/${id}/${action}`),
 
   // 处方
-  prescriptions: (params = {}) => {
+  prescriptions: ({ status, offset, limit } = {}) => {
     const query = new URLSearchParams();
-    if (params.status) query.set("status", params.status);
-    if (params.offset) query.set("offset", String(params.offset));
-    if (params.limit) query.set("limit", String(params.limit));
+    if (status) query.set("status", status);
+    if (offset) query.set("offset", String(offset));
+    if (limit) query.set("limit", String(limit));
     const suffix = query.toString();
-    return get(`/prescriptions${suffix ? `?${suffix}` : ""}`);
+    return get(suffix ? `/prescriptions?${suffix}` : "/prescriptions");
   },
-  prescription: (id) => get(`/prescriptions/${id}`),
+  prescription: (id, signal) => get(`/prescriptions/${id}`, signal),
   createPrescription: (body) => request("/prescriptions", { method: "POST", body }),
   review: (id, body) => request(`/prescriptions/${id}/review`, { method: "POST", body }),
 
   // 设备与报警
-  devices: () => get("/devices"),
   deviceAction: (id, action, reason = "前端操作") => post(`/devices/${id}/${action}`, { reason }),
-  alarms: (status) => get(`/alarms${status ? `?status=${status}` : ""}`),
   acknowledge: (id) => post(`/alarms/${id}/acknowledge`, { operator: "前端操作员" }),
 
   // 追溯。batch 与 prescription 是两条独立事件流，各自用 entity_id + after_id 续拉
-  telemetry: (id, afterId = 0) => get(`/batches/${id}/telemetry?limit=1000&after_id=${afterId}`),
+  telemetry: (id, afterId, signal) => get(`/batches/${id}/telemetry?limit=1000&after_id=${afterId}`, signal),
   trace: (code) => get(`/trace/${code}?limit=1000`),
   entityEvents: (entityId, afterId = 0) =>
     get(`/events?entity_id=${encodeURIComponent(entityId)}&limit=1000&after_id=${afterId}`),

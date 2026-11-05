@@ -19,12 +19,19 @@ export function SimulationPage({ snapshot, onChanged }) {
   const batches = snapshot?.batches || [];
   const devices = snapshot?.devices || [];
   const alarms = snapshot?.alarms || [];
-  const orderedDevices = useMemo(() => {
+  const deviceGroups = useMemo(() => {
     const kinds = Object.keys(DEVICE_KIND_LABELS);
-    return [...devices].sort((a, b) =>
+    const orderedDevices = [...devices].sort((a, b) =>
       kinds.indexOf(a.kind) - kinds.indexOf(b.kind)
       || deviceDisplayCode(a).localeCompare(deviceDisplayCode(b), "en", { numeric: true })
       || a.id.localeCompare(b.id));
+    const groups = new Map();
+    for (const device of orderedDevices) {
+      const group = groups.get(device.kind);
+      if (group) group.push(device);
+      else groups.set(device.kind, [device]);
+    }
+    return [...groups];
   }, [devices]);
 
   const batchById = useMemo(() => new Map(batches.map((b) => [b.id, b])), [batches]);
@@ -36,7 +43,7 @@ export function SimulationPage({ snapshot, onChanged }) {
     try {
       await fn();
       message.success(okText);
-      onChanged?.();
+      await onChanged?.();
     } catch (error) {
       message.error(error.message);
     } finally {
@@ -58,10 +65,10 @@ export function SimulationPage({ snapshot, onChanged }) {
           <span className="notice">确认报警与修复设备是独立操作；修复后进度从暂停处继续</span>
         </div>
         {activeAlarms.length === 0 ? (
-          <div className="console"><span className="notice">当前没有未处理报警。</span></div>
+          <div className="console"><span className="notice">当前没有活跃报警。</span></div>
         ) : (
           <Alert className="banner" type="error" showIcon
-                 message={`${activeAlarms.length} 条未处理报警`}
+                 message={`${activeAlarms.length} 条活跃报警 · ${activeAlarms.filter((alarm) => !alarm.acknowledged).length} 条待确认`}
                  description="故障设备上的批次已停止推进，但资源仍被占用，不会释放给其他批次。" />
         )}
       </section>
@@ -91,42 +98,49 @@ export function SimulationPage({ snapshot, onChanged }) {
       <section aria-label="设备院">
         <div className="section-head" style={{ marginTop: 20 }}>
           <span className="section-title">设备院 · 共 {devices.length} 台</span>
-          <span className="notice">点击卡片查看可执行操作</span>
+          <span className="notice">横向滚动查看更多类型，点击卡片查看可执行操作</span>
         </div>
-        <div className="yard">
-          {orderedDevices.map((d) => {
-            const owner = d.batch_id ? batchById.get(d.batch_id) : null;
+        <div className="yard" role="region" aria-label="按类型排列的设备" tabIndex={0}>
+          {deviceGroups.map(([kind, group]) => {
+            const label = DEVICE_KIND_LABELS[kind] || kind;
             return (
-              <button key={d.id} type="button"
-                      className={`cabinet${selected === d.id ? " selected" : ""}`}
-                      onClick={() => setSelected(selected === d.id ? null : d.id)}
-                      aria-pressed={selected === d.id}>
-                <div className="cabinet-row">
-                  <Lamp status={d.status} />
-                  <span className="cabinet-id" title={d.id}>{deviceDisplayCode(d)}</span>
-                  <span className="cabinet-spacer" />
-                  <span className="cabinet-chip"
-                        style={{ borderColor: "var(--hairline)", color: "var(--ink-2)" }}>
-                    {DEVICE_KIND_LABELS[d.kind] || d.kind}
-                  </span>
+              <section key={kind} className="yard-column" aria-labelledby={`yard-${kind}`}>
+                <h3 id={`yard-${kind}`} className="yard-column-title">
+                  {label}<span className="notice">{group.length} 台</span>
+                </h3>
+                <div className="yard-column-cards">
+                  {group.map((d) => {
+                    const owner = d.batch_id ? batchById.get(d.batch_id) : null;
+                    return (
+                      <button key={d.id} type="button"
+                              className={`cabinet${selected === d.id ? " selected" : ""}`}
+                              onClick={() => setSelected(selected === d.id ? null : d.id)}
+                              aria-pressed={selected === d.id}>
+                        <div className="cabinet-row">
+                          <Lamp status={d.status} />
+                          <span className="cabinet-id" title={d.id}>{deviceDisplayCode(d)}</span>
+                        </div>
+                        <div className="cabinet-row" style={{ marginTop: 6 }}>
+                          <DeviceStatusTag status={d.status} />
+                        </div>
+                        {owner ? (
+                          <span className="cabinet-plan">
+                            占用批次
+                            <Link to={`/batches/${owner.id}`} className="mono" onClick={(e) => e.stopPropagation()}>
+                              {owner.trace_code}
+                            </Link>
+                            <span>{owner.current_stage_name || "—"} · {owner.progress_percent}%</span>
+                          </span>
+                        ) : (
+                          <span className="cabinet-plan is-none">
+                            {kind === "pot" ? "洁净待用" : "空闲待工"}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
-                <div className="cabinet-row" style={{ marginTop: 6 }}>
-                  <DeviceStatusTag status={d.status} />
-                </div>
-                {owner ? (
-                  <span className="cabinet-plan">
-                    占用批次
-                    <Link to={`/batches/${owner.id}`} className="mono" onClick={(e) => e.stopPropagation()}>
-                      {owner.trace_code}
-                    </Link>
-                    <span>{owner.current_stage_name || "—"} · {owner.progress_percent}%</span>
-                  </span>
-                ) : (
-                  <span className="cabinet-plan is-none">
-                    {d.kind === "pot" ? "洁净待用" : "空闲待工"}
-                  </span>
-                )}
-              </button>
+              </section>
             );
           })}
         </div>
@@ -181,11 +195,13 @@ export function SimulationPage({ snapshot, onChanged }) {
               <span>{a.message}</span>
               <span>{a.batch_id ? <Link to={`/batches/${a.batch_id}`} className="mono">{a.batch_id}</Link> : "—"}</span>
               <span>
-                {a.status === "active" ? (
+                {a.status === "resolved" ? (
+                  <Tag bordered={false} color="default">已解决</Tag>
+                ) : a.acknowledged ? (
+                  <Tag bordered={false} color="warning">已确认 · 待修复</Tag>
+                ) : (
                   <Button size="small" loading={busy}
                           onClick={() => run(() => api.acknowledge(a.id), "已确认报警")}>确认</Button>
-                ) : (
-                  <Tag bordered={false} color="default">已解决</Tag>
                 )}
               </span>
             </div>

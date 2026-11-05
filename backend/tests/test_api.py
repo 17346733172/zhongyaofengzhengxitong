@@ -134,6 +134,49 @@ class BackendTests(unittest.TestCase):
         self.assertEqual(service.snapshot()["clock"]["now"], 600)
         self.assertEqual(service.batch(b["id"])["steps"][1]["elapsed_seconds"], 0)
 
+    def test_live_operations_settle_time_before_changing_state(self):
+        batch = self.batch()
+        batch_path = f"/batches/{batch['id']}"
+        with patch("app.service.time") as wall_time:
+            wall_time.monotonic.return_value = 1000
+            self.post("/simulation/start", {})
+            wall_time.monotonic.return_value = 1002
+            paused = self.post(f"{batch_path}/pause", {})
+            self.assertEqual(paused["steps"][0]["elapsed_seconds"], 2)
+            wall_time.monotonic.return_value = 1005
+            resumed = self.post(f"{batch_path}/resume", {})
+            device = resumed["steps"][0]["device_id"]
+            wall_time.monotonic.return_value = 1006
+            self.post(f"/devices/{device}/fault", {})
+            wall_time.monotonic.return_value = 1010
+            self.post(f"/devices/{device}/repair", {})
+            self.assertEqual(self.get(batch_path)["steps"][0]["elapsed_seconds"], 3)
+            wall_time.monotonic.return_value = 1012
+            self.post("/simulation/pause")
+            self.assertEqual(self.get(batch_path)["steps"][0]["elapsed_seconds"], 5)
+
+    def test_paused_clock_does_not_dispatch_and_resource_count_excludes_paused(self):
+        scenario = self.post("/simulation/scenarios", {"count": 8}, 201)
+        waiting_path = f"/batches/{scenario['batch_ids'][-2]}"
+        self.post("/devices/washer-01/offline", {})
+        self.assertTrue(all(b["pot_id"] is None for b in self.get("/simulation")["batches"]))
+        self.step(1)
+        snapshot = self.get("/simulation")
+        self.assertEqual(snapshot["summary"]["waiting_batches"], 1)
+        self.assertEqual(self.get("/dashboard")["devices"], snapshot["devices"])
+        paused = self.post(f"{waiting_path}/pause", {})
+        self.assertIsNone(paused["pot_id"])
+        self.assertEqual(self.get("/dashboard")["waiting_batches"], 0)
+
+    def test_telemetry_limits_periodic_samples_and_keeps_stage_boundaries(self):
+        batch = self.batch()
+        for seconds in (1, 1, 3, 1, 594):
+            self.step(seconds)
+        points = self.get(f"/batches/{batch['id']}/telemetry")["items"]
+        self.assertEqual([(p["sim_time"], p["payload"]["stage"]) for p in points], [
+            (0, "dispensing"), (5, "dispensing"), (600, "dispensing"), (600, "verification"),
+        ])
+
     def test_review_and_duplicate_guards(self):
         p = self.prescription()
         self.post("/batches", {"prescription_id": p["id"]}, 409)
@@ -225,22 +268,24 @@ class BackendTests(unittest.TestCase):
         self.step(1)
         self.assertEqual(self.fetch_batch(batches[-1])["steps"][0]["elapsed_seconds"], 1)
 
-    def test_fifteen_pots_are_exclusive_until_cleanup_finishes(self):
-        batches = [self.batch() for _ in range(16)]
-        self.step(1200)
-        views = [self.fetch_batch(batch) for batch in batches]
-        reserved = [batch["pot_id"] for batch in views if batch["pot_id"] is not None]
-        self.assertEqual(len(reserved), 15)
-        self.assertEqual(len(set(reserved)), 15)
-        self.assertIsNone(views[-1]["pot_id"])
-        self.assertIn("洁净煎药锅", views[-1]["waiting_reason"])
-        freed_pot = views[0]["pot_id"]
-        self.post(f"/batches/{batches[0]['id']}/cancel", {})
+    def test_fifty_pots_are_exclusive_until_cleanup_finishes(self):
+        scenario = self.post("/simulation/scenarios", {"count": 50}, 201)
+        first_id = scenario["batch_ids"][0]
+        waiting = self.batch()
+        self.step(7 * 600)  # The eighth dispensing wave starts before any batch completes.
+        views = {batch["id"]: batch for batch in self.get("/simulation")["batches"]}
+        reserved = [batch["pot_id"] for batch in views.values() if batch["pot_id"] is not None]
+        self.assertEqual(len(reserved), 50)
+        self.assertEqual(len(set(reserved)), 50)
+        self.assertIsNone(views[waiting["id"]]["pot_id"])
+        self.assertIn("洁净煎药锅", views[waiting["id"]]["waiting_reason"])
+        freed_pot = views[first_id]["pot_id"]
+        self.post(f"/batches/{first_id}/cancel", {})
         self.step(299)
-        self.assertIsNone(self.fetch_batch(batches[-1])["pot_id"])
+        self.assertIsNone(self.fetch_batch(waiting)["pot_id"])
         self.step(1)
-        self.assertEqual(self.fetch_batch(batches[0])["status"], "cancelled")
-        self.assertEqual(self.fetch_batch(batches[-1])["pot_id"], freed_pot)
+        self.assertEqual(self.get(f"/batches/{first_id}")["status"], "cancelled")
+        self.assertEqual(self.fetch_batch(waiting)["pot_id"], freed_pot)
 
     def test_device_fault_freezes_then_resumes(self):
         b = self.batch()

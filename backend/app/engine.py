@@ -2,6 +2,9 @@
 
 EPS = 1e-8
 TERMINAL = {"completed", "cancelled"}
+POT_WAIT = "等待空闲且容量足够的洁净煎药锅"
+STATION_WAIT_PREFIX = "等待 "
+TELEMETRY_INTERVAL_SECONDS = 5
 
 
 def current_step(batch):
@@ -26,6 +29,13 @@ def blocker(state, batch):
     return None
 
 
+def waiting_for_resource(batch):
+    reason = batch["waiting_reason"] or ""
+    return batch["status"] in {"queued", "running"} and (
+        reason == POT_WAIT or reason.startswith(STATION_WAIT_PREFIX)
+    )
+
+
 def dispatch(state, emit):
     # Stable FIFO within priority. A started stage is never preempted.
     batches = sorted(state["batches"].values(), key=lambda b: (-b["priority"], b["sequence"]))
@@ -42,14 +52,14 @@ def dispatch(state, emit):
             pots = [d for d in state["devices"].values() if d["kind"] == "pot"
                     and d["status"] == "idle" and d["capacity_ml"] >= b["water_plan"]["total_water_ml"]]
             if not pots:
-                b["waiting_reason"] = "等待空闲且容量足够的洁净煎药锅"
+                b["waiting_reason"] = POT_WAIT
                 continue
         else:
             pots = []
         stations = [d for d in state["devices"].values() if d["kind"] == step["device_kind"]
                     and d["status"] == "idle"]
         if not stations:
-            b["waiting_reason"] = f"等待 {step['name']} 工位"
+            b["waiting_reason"] = f"{STATION_WAIT_PREFIX}{step['name']} 工位"
             continue
         if pots:
             pot = min(pots, key=lambda d: (d["capacity_ml"], d["id"]))
@@ -79,6 +89,7 @@ def late_threshold(state, batch, step):
 
 def telemetry(state, batch, emit):
     step = current_step(batch)
+    batch["last_telemetry_seconds"] = state["clock"]["now"]
     emit("telemetry.point", batch["id"], stage=step["code"] if step else None,
          temperature_c=round(batch["temperature_c"], 2), pressure_kpa=0,
          stage_elapsed_seconds=round(step["elapsed_seconds"], 4) if step else 0,
@@ -119,10 +130,11 @@ def advance(state, seconds, emit):
             if step["elapsed_seconds"] + EPS >= step["duration_seconds"]:
                 finish_step(state, b, emit)
         dispatch(state, emit)
-    # Samples are emitted only for progressing batches; full sensor physics is out of scope.
+    # Keep stage boundaries and limit periodic samples to one per five simulated seconds.
     if seconds > 0:
         for b in state["batches"].values():
-            if b["status"] == "running" and current_step(b)["status"] == "running" and not blocker(state, b):
+            sample_due = state["clock"]["now"] - b.get("last_telemetry_seconds", float("-inf")) >= TELEMETRY_INTERVAL_SECONDS
+            if sample_due and b["status"] == "running" and current_step(b)["status"] == "running" and not blocker(state, b):
                 telemetry(state, b, emit)
 
 

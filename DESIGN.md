@@ -31,7 +31,7 @@
 | `.topbar` | 顶栏，下边线 1px + 顶部 3px 赭橙内阴影 |
 | `.silkscreen` | 11px、字距 0.09em 的丝印小标题 |
 | `.sidenav` | 左导航，选中项左侧 3px 赭橙竖条 |
-| `.yard` | 设备院，`repeat(auto-fill, minmax(215px, 1fr))` 自适应网格 |
+| `.yard` / `.yard-column` | 工作台设备院，每种设备独立一栏，栏首显示类型与数量，同类设备按编号纵向排列。区域内可滚动，栏首固定在顶部。 |
 | `.cabinet` | 设备卡片，顶部 3px 粗边模拟设备铭牌 |
 | `.device-type-index` / `.device-grid` | 类型入口网格、独立类型页面中的设备卡片网格 |
 | `.device-card` / `.device-detail` | 类型图标与利用率读数、选中设备详情；选中态使用赭橙边框及浅色底 |

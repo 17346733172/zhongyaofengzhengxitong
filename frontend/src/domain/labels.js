@@ -78,11 +78,6 @@ export const HERB_METHOD_LABELS = {
   bag: "包煎",
 };
 
-export const ALARM_STATUS_LABELS = {
-  active: "未处理",
-  resolved: "已解决",
-};
-
 /** 把后端返回的秒数格式化为 时:分:秒，全部基于虚拟时间 */
 export function formatVirtualDuration(totalSeconds) {
   const value = Math.max(0, Math.floor(totalSeconds || 0));

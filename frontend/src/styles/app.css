@@ -107,12 +107,39 @@
   color: var(--ink-3);
 }
 
-/* ---------- 设备院：自适应卡片网格 ---------- */
+/* ---------- 设备院：每种设备独立一栏 ---------- */
 .yard {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(215px, 1fr));
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(min(100%, 228px), 1fr);
+  grid-auto-rows: max-content;
   gap: 12px;
   margin: 20px 0;
+  padding: 0 3px 3px;
+  max-height: clamp(280px, 65vh, 640px);
+  overflow: auto;
+  scroll-padding: 42px 3px 3px;
+}
+.yard-column-title {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 7px 10px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--ink);
+  background: var(--paper);
+  border: 1px solid var(--hairline);
+  border-radius: var(--radius);
+}
+.yard-column-cards {
+  display: grid;
+  gap: 8px;
 }
 .cabinet {
   display: block;
@@ -149,24 +176,6 @@
   font-weight: 700;
   letter-spacing: 0.05em;
   color: var(--ink);
-}
-.cabinet-spacer {
-  flex: 1;
-}
-.cabinet-chip {
-  display: inline-block;
-  flex-shrink: 0;
-  padding: 0 6px;
-  font-size: 11px;
-  line-height: 1.55;
-  white-space: nowrap;
-  border: 1px solid;
-  border-radius: var(--radius);
-}
-.cabinet-meta {
-  display: block;
-  font-size: 12px;
-  color: var(--ink-2);
 }
 .cabinet-plan {
   display: block;
@@ -818,6 +827,7 @@
 
 /* ---------- 键盘可达性 ----------
    所有可交互元素都需要可见焦点环；不用 outline:none 而不给替代。 */
+.yard:focus-visible,
 .cabinet:focus-visible,
 .slot-bay:focus-visible,
 .trace-key:focus-visible,
@@ -838,21 +848,14 @@
   outline-offset: 1px;
 }
 
-/* ---------- 减少动态效果 ----------
-   故障脉冲与转动动画在用户要求减少动态时全部停下。 */
+/* ---------- 减少动态效果 ---------- */
 @media (prefers-reduced-motion: reduce) {
-  .lamp-fault,
-  .lamp-busy,
-  .fan.on,
-  .status-STARTING,
-  .comm-DEGRADED {
+  .lamp-fault {
     animation: none !important;
   }
   .cabinet,
   .slot-bay,
-  .plate,
   .verdict-fill,
-  .vacuum-fill,
   .ant-btn,
   .ant-tag {
     transition: none !important;
@@ -901,9 +904,6 @@
   }
   .sidenav-note {
     display: none;
-  }
-  .yard {
-    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
   }
   .desk-gauges {
     grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));

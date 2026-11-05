@@ -15,6 +15,7 @@ class Store:
         self.path = str(Path(path).resolve())
         Path(self.path).parent.mkdir(parents=True, exist_ok=True)
         self.lock = threading.RLock()
+        self.revision = 0
         with self.connect() as db:
             db.execute("PRAGMA journal_mode=WAL")
             db.executescript("""
@@ -44,21 +45,23 @@ class Store:
 
     @contextmanager
     def transaction(self):
-        with self.lock, self.connect() as db:
-            db.execute("BEGIN IMMEDIATE")
-            state = json.loads(db.execute("SELECT payload FROM simulation_state WHERE id=1").fetchone()[0])
-            if state["schema_version"] != 1:
-                raise RuntimeError("数据库版本不兼容")
-            pending = []
+        with self.lock:
+            with self.connect() as db:
+                db.execute("BEGIN IMMEDIATE")
+                state = json.loads(db.execute("SELECT payload FROM simulation_state WHERE id=1").fetchone()[0])
+                if state["schema_version"] != 1:
+                    raise RuntimeError("数据库版本不兼容")
+                pending = []
 
-            def emit(event_type, entity_id, **payload):
-                pending.append((state["clock"]["now"], datetime.now(timezone.utc).isoformat(),
-                                event_type, entity_id, json.dumps(payload, ensure_ascii=False, allow_nan=False)))
+                def emit(event_type, entity_id, **payload):
+                    pending.append((state["clock"]["now"], datetime.now(timezone.utc).isoformat(),
+                                    event_type, entity_id, json.dumps(payload, ensure_ascii=False, allow_nan=False)))
 
-            yield state, emit
-            db.execute("UPDATE simulation_state SET payload=? WHERE id=1",
-                       (json.dumps(state, ensure_ascii=False, allow_nan=False),))
-            db.executemany("INSERT INTO events(sim_time, real_time, type, entity_id, payload) VALUES (?,?,?,?,?)", pending)
+                yield state, emit
+                db.execute("UPDATE simulation_state SET payload=? WHERE id=1",
+                           (json.dumps(state, ensure_ascii=False, allow_nan=False),))
+                db.executemany("INSERT INTO events(sim_time, real_time, type, entity_id, payload) VALUES (?,?,?,?,?)", pending)
+            self.revision += 1
 
     def read(self):
         with self.connect() as db:

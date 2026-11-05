@@ -25,14 +25,14 @@ export default function App() {
       <AppShell clock={clock} connection={status} onChanged={refresh}>
         <Routes>
           <Route path="/" element={<Navigate to="/overview" replace />} />
-          <Route path="/overview" element={<OverviewPage clock={clock} lastEventId={snapshot?.last_event_id} />} />
-          <Route path="/devices" element={<DevicePage clock={clock} lastEventId={snapshot?.last_event_id} batches={snapshot?.batches} />} />
-          <Route path="/devices/:kind" element={<DevicePage clock={clock} lastEventId={snapshot?.last_event_id} batches={snapshot?.batches} />} />
+          <Route path="/overview" element={<OverviewPage snapshot={snapshot} />} />
+          <Route path="/devices" element={<DevicePage snapshot={snapshot} />} />
+          <Route path="/devices/:kind" element={<DevicePage snapshot={snapshot} />} />
           <Route path="/simulation" element={<SimulationPage snapshot={snapshot} onChanged={refresh} />} />
           <Route path="/prescriptions" element={<PrescriptionListPage batchCount={snapshot?.batches?.length} />} />
           <Route path="/prescriptions/:prescriptionId" element={<PrescriptionDetailPage />} />
-          <Route path="/batches" element={<BatchListPage clockNow={clock?.now} lastEventId={snapshot?.last_event_id} />} />
-          <Route path="/batches/:batchId" element={<BatchDetailPage />} />
+          <Route path="/batches" element={<BatchListPage batches={snapshot?.batches} />} />
+          <Route path="/batches/:batchId" element={<BatchDetailPage snapshot={snapshot} onChanged={refresh} />} />
           <Route path="/trace/:traceCode" element={<TracePage />} />
           <Route path="*" element={<div className="console"><Tag color="error">页面不存在</Tag></div>} />
         </Routes>

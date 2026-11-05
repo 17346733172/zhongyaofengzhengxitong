@@ -1,5 +1,6 @@
 import secrets
 import time
+from contextlib import contextmanager
 from uuid import uuid4
 
 from . import engine
@@ -27,6 +28,8 @@ class Service:
     def __init__(self, db_path):
         self.store = Store(db_path)
         self.last_wall = time.monotonic()
+        self.snapshot_revision = -1
+        self.cached_snapshot = None
 
     def on_start(self):
         with self.store.transaction() as (s, emit):
@@ -36,41 +39,42 @@ class Service:
                 emit("simulation.restart_paused", "simulation", reason="服务重启后等待显式继续")
         self.last_wall = time.monotonic()
 
-    def auto_tick(self):
-        # The same lock guards both the wall-time baseline and SQLite state.
+    @contextmanager
+    def _timed_transaction(self):
+        # Settle time under the old state and commit the operation with its events.
         with self.store.lock:
-            now = time.monotonic()
-            elapsed = now - self.last_wall
+            with self.store.transaction() as (state, emit):
+                now = time.monotonic()
+                if state["clock"]["running"]:
+                    engine.advance(state, now - self.last_wall, emit)
+                yield state, emit
             self.last_wall = now
-            if not self.store.read()["clock"]["running"]:
-                return
-            with self.store.transaction() as (s, emit):
-                if s["clock"]["running"]:
-                    engine.advance(s, elapsed, emit)
+
+    def auto_tick(self):
+        with self.store.lock:
+            if self.store.read()["clock"]["running"]:
+                with self._timed_transaction():
+                    pass
 
     def clock(self, action, value=None):
         if action == "start" and value not in (None, 1):
             raise DomainError("real_time_only", "仅支持真实时间1倍速运行")
-        with self.store.lock:
-            if action != "step":
-                self.auto_tick()
-            with self.store.transaction() as (s, emit):
-                if action == "step":
-                    if s["clock"]["running"]:
-                        raise DomainError("clock_running", "自动运行中，请先暂停再手动推进")
-                    engine.advance(s, value, emit)
-                elif action == "start":
-                    s["clock"].update(running=True, speed=1.0)
-                    engine.advance(s, 0, emit)
-                elif action == "pause":
-                    s["clock"]["running"] = False
-                emit(f"simulation.{action}", "simulation", value=value)
-                result = dict(s["clock"])
-            self.last_wall = time.monotonic()
-            return result
+        with self._timed_transaction() as (s, emit):
+            if action == "step":
+                if s["clock"]["running"]:
+                    raise DomainError("clock_running", "自动运行中，请先暂停再手动推进")
+                engine.advance(s, value, emit)
+            elif action == "start":
+                s["clock"].update(running=True, speed=1.0)
+                engine.dispatch(s, emit)
+            elif action == "pause":
+                s["clock"]["running"] = False
+            emit(f"simulation.{action}", "simulation", value=value)
+            result = dict(s["clock"])
+        return result
 
     def create_prescription(self, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             p = self._prescription(s, emit, request.model_dump())
         return p
 
@@ -85,7 +89,7 @@ class Service:
         return p
 
     def review(self, prescription_id, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             p = require(s["prescriptions"], prescription_id, "处方")
             if p["status"] != "pending_review":
                 raise DomainError("already_reviewed", "该处方已经审核，不能重复审核")
@@ -114,13 +118,13 @@ class Service:
         return b
 
     def create_batch(self, prescription_id):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             b = self._batch(s, emit, prescription_id)
             result = engine.batch_view(s, b)
         return result
 
     def batch_action(self, batch_id, action, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             b = require(s["batches"], batch_id, "批次")
             if b["status"] in engine.TERMINAL:
                 raise DomainError("batch_finished", "批次已经结束")
@@ -132,6 +136,7 @@ class Service:
                 if b["status"] != "paused":
                     raise DomainError("batch_not_paused", "批次未暂停")
                 b["status"] = "running" if engine.current_step(b)["status"] == "running" else "queued"
+                b["waiting_reason"] = "等待调度" if b["status"] == "queued" else None
             elif action == "cancel":
                 if b["dispatched"]:
                     raise DomainError("already_dispatched", "成品已配发，批次需完成清洗，不能取消")
@@ -139,12 +144,13 @@ class Service:
                     raise DomainError("cancellation_pending", "批次正在执行取消后的清洗")
                 engine.cancel(s, b, emit)
             emit(f"batch.{action}", batch_id, **request.model_dump())
-            engine.dispatch(s, emit)
+            if s["clock"]["running"]:
+                engine.dispatch(s, emit)
             result = engine.batch_view(s, b)
         return result
 
     def create_device(self, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             d = device_record(ident(str(request.kind)), request.name, str(request.kind), request.capacity_ml)
             d["added_at"] = s["clock"]["now"]
             s["devices"][d["id"]] = d
@@ -152,7 +158,7 @@ class Service:
         return d
 
     def device_action(self, device_id, action, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             d = require(s["devices"], device_id, "设备")
             if action == "fault":
                 if d["status"] not in {"idle", "busy"}:
@@ -181,11 +187,12 @@ class Service:
                     raise DomainError("device_not_offline", "该设备未停用")
                 d["status"] = "idle"
             emit(f"device.{action}", device_id, **request.model_dump())
-            engine.dispatch(s, emit)
+            if s["clock"]["running"]:
+                engine.dispatch(s, emit)
         return d
 
     def acknowledge(self, alarm_id, request):
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             alarm = require(s["alarms"], alarm_id, "报警")
             if not alarm["acknowledged"]:
                 alarm.update(acknowledged=True, acknowledged_by=request.operator)
@@ -194,7 +201,7 @@ class Service:
 
     def scenario(self, count):
         """Create anonymous samples and approved batches in one atomic operation."""
-        with self.store.transaction() as (s, emit):
+        with self._timed_transaction() as (s, emit):
             ids = []
             prefix = secrets.token_hex(4)
             for i in range(count):
@@ -216,10 +223,16 @@ class Service:
         return {"batch_ids": ids, "count": count, "message": "演示批次已创建，请开始真实计时运行"}
 
     def snapshot(self):
-        s = self.store.read()
-        return {"clock": s["clock"], "last_event_id": s["last_event_id"],
-                "batches": [engine.batch_view(s, b) for b in s["batches"].values()],
-                "devices": list(s["devices"].values()), "alarms": list(s["alarms"].values())}
+        with self.store.lock:
+            if self.snapshot_revision != self.store.revision:
+                s = self.store.read()
+                batches = [engine.batch_view(s, b) for b in s["batches"].values()]
+                self.cached_snapshot = {"clock": s["clock"], "last_event_id": s["last_event_id"],
+                                        "batches": batches, "devices": self._device_views(s),
+                                        "alarms": list(s["alarms"].values()),
+                                        "summary": self._summary(s, batches)}
+                self.snapshot_revision = self.store.revision
+            return self.cached_snapshot
 
     def batch(self, batch_id):
         s = self.store.read()
@@ -235,21 +248,28 @@ class Service:
                 "batch_events": self.store.events(after_id, limit, b["id"]),
                 "prescription_events": self.store.events(after_id, limit, b["prescription_id"])}
 
-    def dashboard(self):
-        s = self.store.read()
-        batches = list(s["batches"].values())
-        counts = {status: sum(b["status"] == status for b in batches)
-                  for status in ["queued", "running", "paused", "completed", "cancelled"]}
-        dispatched = sum(b["produced_bags"] for b in batches if b["dispatched"])
+    @staticmethod
+    def _device_views(s):
         devices = []
         for d in s["devices"].values():
             duration = s["clock"]["now"] - d["added_at"]
             devices.append({**d, "kind_name": DEVICE_LABELS[d["kind"]],
                             "default_processing_seconds": DEFAULT_PROCESSING_SECONDS.get(d["kind"]),
                             "utilization_percent": round(d["productive_seconds"] / duration * 100, 2) if duration else 0})
-        return {"clock": s["clock"], "total_prescriptions": len(s["prescriptions"]),
+        return devices
+
+    @staticmethod
+    def _summary(s, batches):
+        counts = dict.fromkeys(("queued", "running", "paused", "completed", "cancelled"), 0)
+        for batch in batches:
+            counts[batch["status"]] += 1
+        dispatched = sum(b["produced_bags"] for b in batches if b["dispatched"])
+        return {"total_prescriptions": len(s["prescriptions"]),
                 "batch_counts": counts, "dispatched_bags": dispatched,
                 "active_alarms": sum(a["status"] == "active" for a in s["alarms"].values()),
-                "waiting_batches": sum(bool(b["waiting_reason"]) for b in batches if b["status"] not in engine.TERMINAL),
-                "bags_per_virtual_hour": round(dispatched * 3600 / s["clock"]["now"], 2) if s["clock"]["now"] else 0,
-                "devices": devices}
+                "waiting_batches": sum(engine.waiting_for_resource(b) for b in batches),
+                "bags_per_virtual_hour": round(dispatched * 3600 / s["clock"]["now"], 2) if s["clock"]["now"] else 0}
+
+    def dashboard(self):
+        snapshot = self.snapshot()
+        return {**snapshot["summary"], "clock": snapshot["clock"], "devices": snapshot["devices"]}

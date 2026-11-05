@@ -73,10 +73,10 @@ def make_steps(p):
 
 def initial_state():
     devices = {}
-    counts = {K.POT: 15, K.DISPENSER: 7, K.VERIFICATION: 1, K.CONVEYOR: 2,
-              K.WATER: 1, K.SOAKING: 4, K.DECOCTER: 2, K.FILTER: 1,
-              K.PACKER: 1, K.LABELER: 1, K.QUALITY: 1, K.DISPATCH: 1,
-              K.RESIDUE: 1, K.WASHER: 1}
+    counts = {K.POT: 50, K.DISPENSER: 7, K.VERIFICATION: 3, K.CONVEYOR: 5,
+              K.WATER: 2, K.SOAKING: 4, K.DECOCTER: 30, K.FILTER: 6,
+              K.PACKER: 6, K.LABELER: 6, K.QUALITY: 3, K.DISPATCH: 3,
+              K.RESIDUE: 2, K.WASHER: 2}
     for kind, count in counts.items():
         for i in range(1, count + 1):
             ident = f"{kind}-{i:02}"
