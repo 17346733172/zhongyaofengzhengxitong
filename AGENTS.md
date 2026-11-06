@@ -6,7 +6,7 @@
 
 ## 开发约定
 
-- 使用 Python 3.11+、FastAPI、Pydantic v2、SQLite。现阶段以单进程运行；不能直接增加 Uvicorn workers。
+- 使用 Python 3.11+、FastAPI、Pydantic v2、PostgreSQL。旧 SQLite 数据库仅用于离线迁移。现阶段以单进程运行；不能直接增加 Uvicorn workers。
 - 业务规则放在 `backend/app/service.py`，离散事件调度放在 `backend/app/engine.py`，持久化只通过 `backend/app/store.py`。
 - 仿真引擎不读取系统时间；时间、资源分配、事件记录必须在同一事务内更新。
 - 字段名称带单位：`*_seconds`、`*_ml`、`*_g`、`*_c`。接口统一使用 `/api/v1`；中文用于说明和显示，枚举使用英文。

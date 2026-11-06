@@ -3,7 +3,6 @@ import hmac
 import logging
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, Depends, FastAPI, Query, WebSocket, WebSocketDisconnect
@@ -18,16 +17,14 @@ from .service import DomainError, Service, require
 from .workflow import DEFAULT_PROCESSING_SECONDS, DEVICE_LABELS, make_steps
 
 log = logging.getLogger(__name__)
-ROOT = Path(__file__).resolve().parent.parent
 
 
 def page(items, offset, limit):
     return {"items": items[offset:offset + limit], "total": len(items), "offset": offset, "limit": limit}
 
 
-def create_app(db_path=None, api_key=None, enable_runner=True, enable_debug_step=None):
-    db_path = db_path or os.environ.get("DECOCTION_DB", str(ROOT / "data" / "simulation.db"))
-    service = Service(db_path)
+def create_app(db_dsn=None, api_key=None, enable_runner=True, enable_debug_step=None):
+    service = Service(db_dsn)
     key = api_key if api_key is not None else os.environ.get("DECOCTION_API_KEY", "")
     debug_step = (os.environ.get("DECOCTION_ALLOW_DEBUG_STEP") == "1"
                   if enable_debug_step is None else enable_debug_step)

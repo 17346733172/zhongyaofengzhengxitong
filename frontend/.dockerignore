@@ -1,0 +1,11 @@
+# Exclude local dependencies, .env files and dist by allowing only build inputs.
+**
+!package.json
+!package-lock.json
+!index.html
+!vite.config.js
+!nginx.conf
+!public/
+!public/**
+!src/
+!src/**

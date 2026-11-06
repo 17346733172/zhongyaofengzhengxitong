@@ -1,0 +1,52 @@
+name: decoction-sim
+
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: decoction
+      POSTGRES_USER: decoction
+      POSTGRES_PASSWORD: ${DECOCTION_POSTGRES_PASSWORD:?set DECOCTION_POSTGRES_PASSWORD in .env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-h", "127.0.0.1", "-U", "decoction", "-d", "decoction"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        DECOCTION_PIP_INDEX_URL: ${DECOCTION_PIP_INDEX_URL:-https://pypi.org/simple}
+    environment:
+      PGHOST: db
+      PGDATABASE: decoction
+      PGUSER: decoction
+      PGPASSWORD: ${DECOCTION_POSTGRES_PASSWORD:?set DECOCTION_POSTGRES_PASSWORD in .env}
+      DECOCTION_API_KEY: ${DECOCTION_API_KEY:-}
+      DECOCTION_CORS_ORIGINS: ${DECOCTION_CORS_ORIGINS:-http://localhost:8080,http://127.0.0.1:8080}
+      DECOCTION_ALLOW_DEBUG_STEP: "0"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    stop_grace_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_KEY: ${DECOCTION_API_KEY:-}
+    ports:
+      - "${DECOCTION_BIND_IP:-127.0.0.1}:${DECOCTION_HTTP_PORT:-8080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres-data:

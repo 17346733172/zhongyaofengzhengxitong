@@ -7,6 +7,7 @@
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
+$env:DECOCTION_DATABASE_URL = 'postgresql://decoction:CHANGE_ME@127.0.0.1:5432/decoction_dev'
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000 --ws wsproto
 ```
 
@@ -22,13 +23,16 @@ python -m venv .venv
 
 ## 验证命令
 
+准备独立的 PostgreSQL 测试库，测试用户需有创建 schema 的权限。
+
 ```powershell
+$env:DECOCTION_TEST_DATABASE_URL = 'postgresql://tester:CHANGE_ME@127.0.0.1:5432/decoction_test'
 .\.venv\Scripts\python.exe -m unittest discover -v
 .\.venv\Scripts\python.exe -m compileall -q app scripts tests
 .\.venv\Scripts\python.exe -m pip check
 ```
 
-正常服务按真实时间 1 倍速运行，不开放离线步进。需要快速端到端回归时，先指定独立数据库，再设置 `DECOCTION_ALLOW_DEBUG_STEP=1` 启动服务，使用 `scripts/demo.py`；脚本会先检查调试开关，再暂停时钟、追加批次并推进。集成测试显式启用调试步进，使用 `data/tests/run-*` 临时目录，完成后自动清理自身目录。
+每项集成测试使用随机命名的 PostgreSQL schema 并在结束后清理。需要快速端到端演示时，使用独立调试数据库，设置 `DECOCTION_ALLOW_DEBUG_STEP=1` 后启动服务并运行 `scripts/demo.py`。脚本先检查调试开关，再暂停时钟、追加批次并推进。
 
 ## 调度变更要求
 

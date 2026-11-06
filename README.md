@@ -12,19 +12,39 @@
 - 固定真实时间 1 倍速运行，界面显示当前北京时间；支持全局暂停与单批次暂停。
 - 仿真设备添加、停用、故障注入、修复，报警确认与处理。
 - 药锅从开始调剂到清洗完成持续占用；生产中取消批次也需完成倒渣和清洗。
-- SQLite 持久化、事件追溯、温度采样、产量及设备利用率统计。
+- PostgreSQL 持久化、事件追溯、温度采样、产量及设备利用率统计。
 - 默认预置 129 个仿真资源，包括 50 口锅、7 台调剂机、4 个浸泡位和 30 个煎煮位。完整数量见 [默认设备数量](docs/PROJECT-SPEC.md#默认设备数量)。
 
 ## 技术栈
 
-Python 3.11+ / FastAPI / Pydantic v2 / SQLite / Uvicorn / wsproto。测试使用标准库 unittest 和 HTTPX TestClient。当前验证环境为 Windows、Python 3.14；数据库无需另外安装。
+Python 3.11+ / FastAPI / Pydantic v2 / PostgreSQL 17 / Psycopg 3 / Uvicorn / wsproto。测试使用标准库 unittest 和 HTTPX TestClient。
+
+## Docker 部署（Linux 服务器）
+
+根目录提供 `compose.yaml`，启动 Nginx 前端、FastAPI 后端和 PostgreSQL 17。后端固定单进程，数据库保存在独立命名卷中。服务器或 WSL 需先安装 Docker Engine 和 Compose。
+
+从 SQLite 版本升级时，先执行[旧数据迁移](docs/DEPLOYMENT.md#迁移旧-sqlite-数据)，再启动新版后端。首次部署可以直接使用以下步骤。
+
+在项目根目录执行：
+
+```bash
+cp -n .env.example .env
+# 在 .env 中设置 DECOCTION_POSTGRES_PASSWORD，并按需配置浏览器访问地址
+docker compose config --quiet
+docker compose up -d --build --wait
+```
+
+默认仅本机可访问 `http://127.0.0.1:8080`。其他电脑访问前，需设置监听地址，并把实际浏览器地址（如 `http://服务器IP:8080`）填入 `DECOCTION_CORS_ORIGINS`，否则 WebSocket 会被拒绝。端口、域名、升级、备份及已有数据迁移见 [部署说明](docs/DEPLOYMENT.md#docker-部署linux-服务器)。
+
+该配置面向受控演示；公网访问需由 VPN 或带身份认证的 HTTPS 网关限制访问。当前未实现用户账户与数据隔离。
 
 ## 快速开始（Windows）
 
-项目分 `backend/` 与 `frontend/` 两个目录，各自独立启动。后端代码位于 `backend` 目录，以下命令都在该目录执行。双击 `backend\启动后端.cmd`，或在 PowerShell 执行：
+直接开发后端时，先在可访问的 PostgreSQL 实例中创建数据库和有建表权限的专用用户。将示例连接地址替换为实际地址，在 PowerShell 执行：
 
 ```powershell
 cd backend
+$env:DECOCTION_DATABASE_URL = 'postgresql://decoction:CHANGE_ME@127.0.0.1:5432/decoction'
 powershell -NoProfile -ExecutionPolicy Bypass -File .\start.ps1
 ```
 
@@ -72,21 +92,23 @@ python -m venv .venv
 
 ## 开发验证
 
-在 `backend` 目录执行：
+准备一个独立 PostgreSQL 测试数据库，在 `backend` 目录执行：
 
 ```powershell
+$env:DECOCTION_TEST_DATABASE_URL = 'postgresql://tester:CHANGE_ME@127.0.0.1:5432/decoction_test'
 .\.venv\Scripts\python.exe -m unittest discover -v
 ```
 
-测试在独立临时数据库中运行，不更改开发数据库。覆盖流程边界、后下时间点、资源互斥、故障暂停、取消清洗、并发重复提交、追溯、接口鉴权、真实计时、工序时长和重启持久化；离线测试显式启用调试步进，无需实际等待完整工序。
+每项测试在指定测试库中创建独立 schema，并在结束后清理。覆盖流程、资源互斥、并发、追溯、重启持久化及 SQLite 导入。未设置测试库连接串时，集成测试会跳过。
 
 ## 配置与数据
 
-默认数据位于 `backend/data/simulation.db`，首次启动自动创建。重新启动保留处方、批次、工位与事件，自动时钟会暂停，需显式继续。`.env.example` 仅供参考；程序从环境变量读取配置，不自动加载 `.env`。
+后端首次启动时在 PostgreSQL 创建业务表。重新启动后保留处方、批次、工位与事件，仿真时钟暂停，需显式继续。直接启动时由环境变量配置数据库连接，Docker 部署由 Compose 读取根目录 `.env`。
 
 | 变量 | 默认值 | 用途 |
 |---|---|---|
-| `DECOCTION_DB` | `backend` 目录下 `data/simulation.db` | SQLite 路径，建议使用绝对路径 |
+| `DECOCTION_DATABASE_URL` | 空 | 直接启动时使用的 PostgreSQL 连接串，也可设置 `PGHOST`、`PGPORT`、`PGDATABASE`、`PGUSER`、`PGPASSWORD` |
+| `DECOCTION_POSTGRES_PASSWORD` | 必填 | Compose 初始化 PostgreSQL 时使用的数据库密码 |
 | `DECOCTION_API_KEY` | 空 | 非空时 REST 需 `X-API-Key`，WebSocket 首条消息认证 |
 | `DECOCTION_CORS_ORIGINS` | `http://localhost:5173,http://127.0.0.1:5173` | 允许的浏览器前端来源，逗号分隔 |
 | `DECOCTION_ALLOW_DEBUG_STEP` | `0` | 仅独立调试库设为 `1` 以启用离线步进；正常运行保持关闭 |

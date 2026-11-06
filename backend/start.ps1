@@ -7,7 +7,7 @@ if (-not (Test-Path -LiteralPath $pythonPath)) {
     python -m venv .venv
     if ($LASTEXITCODE -ne 0) { throw 'Failed to create .venv' }
 }
-& $pythonPath -c "import importlib.util,sys; sys.exit(0 if all(importlib.util.find_spec(m) for m in ('fastapi','uvicorn','pydantic','httpx','wsproto')) else 1)"
+& $pythonPath -c "import importlib.util,sys; sys.exit(0 if all(importlib.util.find_spec(m) for m in ('fastapi','uvicorn','pydantic','httpx','wsproto','psycopg','psycopg_binary')) else 1)"
 if ($LASTEXITCODE -ne 0) {
     & $pythonPath -m pip install -r requirements-lock.txt
     if ($LASTEXITCODE -ne 0) {

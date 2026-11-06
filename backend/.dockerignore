@@ -1,0 +1,7 @@
+# Only runtime source and the verified dependency lock enter the build context.
+**
+!app/
+!app/**
+!requirements-lock.txt
+app/**/__pycache__/
+app/**/*.py[cod]

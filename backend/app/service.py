@@ -25,8 +25,8 @@ def ident(prefix):
 
 
 class Service:
-    def __init__(self, db_path):
-        self.store = Store(db_path)
+    def __init__(self, db_dsn=None):
+        self.store = Store(db_dsn)
         self.last_wall = time.monotonic()
         self.snapshot_revision = -1
         self.cached_snapshot = None

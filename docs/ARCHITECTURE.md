@@ -7,13 +7,15 @@ flowchart LR
     UI[React 前端 / Swagger / 示例脚本] --> API[FastAPI REST 接口]
     API --> S[应用服务与业务校验]
     S --> E[离散事件引擎]
-    S --> DB[(SQLite 状态与事件)]
+    S --> DB[(PostgreSQL 状态与事件)]
     T[后台时钟] --> S
     DB --> WS[WebSocket 快照]
     WS --> UI
 ```
 
 开发环境下前端的 `/api` 与 `/ws` 由 Vite 代理转发到后端，因此浏览器看到的是同源地址；代理只是转发，不改变接口语义。
+
+根目录 `compose.yaml` 编排三个服务。`frontend` 用 Nginx 提供静态页面、SPA 路由回退，并转发 REST、WebSocket 和健康检查到 `backend:8000`。`backend` 以非 root 用户启动单个 Uvicorn worker。`db` 在内网运行 PostgreSQL 17，将数据写入 `postgres-data` 命名卷。Nginx 是唯一发布到宿主机的服务，Compose 按数据库、后端、前端的健康检查顺序启动。
 
 总览、设备页、仿真工作台和批次页共用仿真快照。总览从 `summary` 读取指标，设备页从 `devices` 读取利用率，结合 `batches` 显示批次状态。`/dashboard` 继续提供同一口径的 REST 查询，旧版后端缺少快照汇总时总览和设备页每次查询完成后间隔 3 秒再查。批次详情通过事件游标补充温度采样。
 
@@ -27,6 +29,8 @@ flowchart LR
 ├── DESIGN.md
 ├── CHANGELOG.md
 ├── TODO.md
+├── compose.yaml                 # 前端、后端和 PostgreSQL 服务
+├── .env.example                 # Compose 部署配置模板
 ├── docs/
 │   ├── PROJECT-SPEC.md
 │   ├── ARCHITECTURE.md
@@ -44,18 +48,24 @@ flowchart LR
 │   │   ├── service.py              # 业务与操作事务
 │   │   ├── engine.py               # 离散事件调度
 │   │   ├── workflow.py             # 工序、工位、水量假设
-│   │   └── store.py                # SQLite 快照与事件
+│   │   ├── store.py                # PostgreSQL 快照、事件及离线导入
+│   │   └── migrate_sqlite.py       # 旧 SQLite 一次性导入入口
 │   ├── tests/test_api.py
 │   ├── scripts/demo.py
 │   ├── examples/prescription.json
-│   ├── data/                       # 自动创建数据库；不提交
+│   ├── data/                       # 可能存在旧 SQLite 源文件，不提交
 │   ├── requirements.txt
 │   ├── requirements-lock.txt        # 已验证环境的依赖锁定清单
+│   ├── Dockerfile                   # 非 root、单 worker 的 Python 容器
+│   ├── .dockerignore
 │   ├── .env.example
 │   ├── .gitignore
 │   ├── start.ps1
 │   └── 启动后端.cmd
 └── frontend/                    # React 18 + AntD 5 + Vite 前端
+    ├── Dockerfile                  # Node 构建 / Nginx 静态服务
+    ├── .dockerignore
+    ├── nginx.conf                  # 生产代理与页面路由回退
     ├── index.html
     ├── package.json
     ├── vite.config.js              # 开发服务器 5173，/api 与 /ws 代理到 8000
@@ -73,7 +83,9 @@ flowchart LR
 
 ## 数据组织
 
-SQLite 包含两张表。`simulation_state` 的单条 JSON 快照保存时钟、处方、批次、设备和报警；`events` 是独立追加的事件表，包含全局递增 ID、累计运行秒数（沿用 `sim_time` 字段）、真实 UTC 记录时间、类型、实体 ID 和载荷。`entity_id,id` 索引支持追溯。状态与事件在同一 `BEGIN IMMEDIATE` 事务中提交，异常则同时回滚。
+PostgreSQL 包含两张表。`simulation_state` 的单条快照保存时钟、处方、批次、设备和报警，使用 `json` 保留既有记录顺序。`events` 使用自增 `BIGINT` 事件编号，保存累计运行秒数 `sim_time`、UTC 时间、类型、实体 ID 和载荷。`entity_id,id` 索引支持追溯。写入通过 `SELECT ... FOR UPDATE` 锁定状态行，将进度、资源分配和事件放在同一事务提交。读取快照和最新事件编号使用同一条 SQL，保证观察到同一次提交。
+
+一次性 SQLite 导入保留快照、事件编号和 SQLite 事件序列的高水位。导入应在源服务停止后执行，失败时整笔回滚。迁移命令见 `DEPLOYMENT.md`。
 
 该聚合快照方案适用于本地、小规模演示，每次变更需要读写完整状态。批次和处方很多时应拆分为规范化表、归档历史，并让调度器单独运行。事件不写入快照，避免每次复制全部历史。
 
@@ -105,4 +117,4 @@ SQLite 包含两张表。`simulation_state` 的单条 JSON 快照保存时钟、
 
 ## 运行边界
 
-进程内使用可重入锁，SQLite 事务串行化写入。只能启动一个服务进程使用同一数据库：多 worker 会各自运行时钟和执行重启暂停。数据库不宜放在网络共享目录。当前没有账户隔离、历史删除接口或在线重置接口。
+进程内可重入锁保护单调时钟和快照缓存，PostgreSQL 行锁保护数据库写入。同一数据库仅运行一个服务进程，多个 worker 会各自驱动时钟并执行重启暂停。当前没有账户隔离、历史删除接口或在线重置接口。

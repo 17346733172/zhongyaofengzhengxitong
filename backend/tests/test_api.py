@@ -1,8 +1,6 @@
-import tempfile
 import unittest
 import time
 from concurrent.futures import ThreadPoolExecutor
-from pathlib import Path
 from unittest.mock import patch
 
 from fastapi.testclient import TestClient
@@ -10,24 +8,15 @@ from starlette.websockets import WebSocketDisconnect
 
 from app.api import create_app
 from app import engine
-
-ROOT = Path(__file__).resolve().parent.parent
+from tests.postgres import test_schema
 
 
 class BackendTests(unittest.TestCase):
     def setUp(self):
-        test_root = ROOT / "data" / "tests"
-        test_root.mkdir(parents=True, exist_ok=True)
-        self.temp = tempfile.TemporaryDirectory(prefix="run-", dir=test_root)
-        self.assertEqual(Path(self.temp.name).resolve().parent, test_root.resolve())
-        self.db = Path(self.temp.name) / "test.db"
+        self.db = test_schema(self)
         self.app = create_app(self.db, api_key="", enable_runner=False, enable_debug_step=True)
-        self.client = TestClient(self.app).__enter__()
+        self.client = self.enterContext(TestClient(self.app))
         self.sequence = 0
-
-    def tearDown(self):
-        self.client.__exit__(None, None, None)
-        self.temp.cleanup()
 
     def post(self, path, body=None, status=200):
         result = self.client.post("/api/v1" + path, json=body)
