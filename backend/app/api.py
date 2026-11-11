@@ -12,15 +12,13 @@ from fastapi.security import APIKeyHeader
 
 from .engine import batch_view
 from .models import (BatchCreate, ClockStart, ClockStep, DeviceCreate, OperatorAction,
-                     PrescriptionCreate, Review, ScenarioCreate)
+                     PrescriptionCreate, ScenarioCreate)
+from .pagination import page
+from .prescription_routes import register_prescription_routes
 from .service import DomainError, Service, require
 from .workflow import DEFAULT_PROCESSING_SECONDS, DEVICE_LABELS, make_steps
 
 log = logging.getLogger(__name__)
-
-
-def page(items, offset, limit):
-    return {"items": items[offset:offset + limit], "total": len(items), "offset": offset, "limit": limit}
 
 
 def create_app(db_dsn=None, api_key=None, enable_runner=True, enable_debug_step=None):
@@ -113,23 +111,7 @@ def create_app(db_dsn=None, api_key=None, enable_runner=True, enable_debug_step=
                                 "工位间排队期间保持上一时刻温度，不模拟热损失",
                                 "参数是演示假设，并非厂商设备参数或临床建议"]}
 
-    @router.post("/prescriptions", status_code=201, tags=["处方"], summary="录入匿名仿真处方")
-    def create_prescription(body: PrescriptionCreate):
-        return service.create_prescription(body)
-
-    @router.get("/prescriptions", tags=["处方"])
-    def prescriptions(status: Literal["pending_review", "approved", "rejected"] | None = None,
-                      offset: int = Query(0, ge=0), limit: int = Query(50, ge=1, le=200)):
-        items = list(service.store.read()["prescriptions"].values())
-        return page([p for p in items if status is None or p["status"] == status], offset, limit)
-
-    @router.get("/prescriptions/{prescription_id}", tags=["处方"])
-    def prescription(prescription_id: str):
-        return require(service.store.read()["prescriptions"], prescription_id, "处方")
-
-    @router.post("/prescriptions/{prescription_id}/review", tags=["处方"], summary="人工审核通过或驳回")
-    def review(prescription_id: str, body: Review):
-        return service.review(prescription_id, body)
+    register_prescription_routes(router, service)
 
     @router.post("/batches", status_code=201, tags=["批次"])
     def create_batch(body: BatchCreate):

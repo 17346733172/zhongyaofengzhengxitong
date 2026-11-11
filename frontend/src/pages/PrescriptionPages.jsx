@@ -3,9 +3,10 @@ import { Link, useParams } from "react-router-dom";
 import { Alert, Button, Space, Table, Tag, message } from "antd";
 import { PlusOutlined } from "@ant-design/icons";
 import { api } from "../api/client";
+import { herbDose, herbWeight } from "../domain/herb-dose";
 import { ACCENT_COLOR, BatchStatusTag, Chip, PanelSkeleton } from "../components/Display";
 import { PrescriptionForm, ReviewForm } from "./PrescriptionForm";
-import { HERB_METHOD_LABELS, PRESCRIPTION_STATUS_LABELS, formatVirtualDuration } from "../domain/labels";
+import { HERB_METHOD_LABELS, PRESCRIPTION_STATUS_LABELS, formatBeijingDateTime } from "../domain/labels";
 
 const STATUS_FILTERS = [
   { value: undefined, label: "全部" },
@@ -98,8 +99,8 @@ export function PrescriptionListPage({ batchCount }) {
               render: (v) => v ? <Link to={`/batches/${v}`} className="mono">{v}</Link> : <span className="notice">未创建</span>,
             },
             {
-              title: "录入时刻", dataIndex: "created_at", width: 104,
-              render: (v) => <span className="mono">{formatVirtualDuration(v)}</span>,
+              title: "录入时间（北京）", dataIndex: "created_real_time", width: 190,
+              render: (v) => <span className="mono">{formatBeijingDateTime(v)}</span>,
             },
             {
               title: "操作", key: "action", width: 88,
@@ -204,7 +205,7 @@ export function PrescriptionDetailPage() {
                 {prescription.review.approved ? "通过" : "驳回"}
               </Tag>
               <Tag bordered={false}>操作人 {prescription.review.operator}</Tag>
-              <Tag bordered={false}>虚拟时刻 {formatVirtualDuration(prescription.review.sim_time)}</Tag>
+              <Tag bordered={false}>审核时间（北京） {formatBeijingDateTime(prescription.review.real_time)}</Tag>
             </Space>
             {prescription.review.comment ? <div style={{ marginTop: 6 }}><span className="notice">{prescription.review.comment}</span></div> : null}
           </div>
@@ -224,12 +225,14 @@ export function PrescriptionDetailPage() {
 
       <section className="console" style={{ marginTop: 16 }} aria-label="药组构成">
         <div className="section-head"><span className="section-title">药组构成 · 共 {prescription.herbs?.length ?? 0} 条</span></div>
-        <Table size="small" rowKey="name" pagination={false} dataSource={prescription.herbs || []}
+        {prescription.herbs?.some(h => h.unit === "piece" && h.grams_per_dose == null) && <Alert type="info" showIcon className="banner" message="已保留原始片数，请在审核时补充每剂实测克数，再计算仿真水量。" />}
+        <Table size="small" rowKey="name" pagination={false} scroll={{ x: 620 }} dataSource={prescription.herbs || []}
                columns={[
                  { title: "饮片", dataIndex: "name", render: (v) => <span className="mono">{v}</span> },
-                 { title: "每剂剂量", dataIndex: "grams_per_dose", render: (v) => <span className="mono">{v} g</span> },
+                 { title: "每剂剂量", key: "dose", render: (_, r) => <span className="mono">{herbDose(r)}</span> },
+                 { title: "每剂重量", key: "weight", render: (_, r) => <span className="mono">{herbWeight(r)}</span> },
                  { title: "煎法", dataIndex: "method", render: (v) => <Tag bordered={false}>{HERB_METHOD_LABELS[v] || v}</Tag> },
-                 { title: "合计剂量", key: "total", render: (_, r) => <span className="mono">{(r.grams_per_dose * prescription.doses).toFixed(2)} g</span> },
+                 { title: "合计剂量", key: "total", render: (_, r) => <span className="mono">{herbDose(r, prescription.doses)}</span> },
                ]} />
       </section>
 

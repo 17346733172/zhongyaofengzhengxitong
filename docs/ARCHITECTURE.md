@@ -19,7 +19,11 @@ flowchart LR
 
 总览、设备页、仿真工作台和批次页共用仿真快照。总览从 `summary` 读取指标，设备页从 `devices` 读取利用率，结合 `batches` 显示批次状态。`/dashboard` 继续提供同一口径的 REST 查询，旧版后端缺少快照汇总时总览和设备页每次查询完成后间隔 3 秒再查。批次详情通过事件游标补充温度采样。
 
-`api.py` 负责协议、参数、鉴权、分页、生命周期；`service.py` 负责审核与状态变更；`engine.py` 负责资源分配及时间推进；`workflow.py` 负责工序生成与演示水量；`store.py` 负责数据库事务。引擎只修改传入状态并发出事件，可离开 HTTP 独立验证。
+`api.py` 负责统一鉴权、生命周期及路由组装，`prescription_routes.py` 负责处方协议与参数，`pagination.py` 维护共用分页响应；`service.py` 负责审核与状态变更；`engine.py` 负责资源分配及时间推进；`workflow.py` 负责工序生成与演示水量；`store.py` 负责数据库事务。引擎只修改传入状态并发出事件，可离开 HTTP 独立验证。
+
+## 计数与重量
+
+`Herb.unit` 默认 `g`，兼容原 `grams_per_dose` 请求；`piece` 使用 `quantity_per_dose` 保存每剂片数。审核 `herb_grams_per_dose` 仅补计数饮片的实际重量，修改、状态及事件仍在同一事务内提交。批次创建另行验证重量完整，再调用现有 `water_plan`；计数不参与质量加总。现有 JSON 持久化保留新增字段，无需回写历史数据。
 
 ## 目录
 
@@ -43,7 +47,9 @@ flowchart LR
 │   ├── app/
 │   │   ├── __init__.py
 │   │   ├── main.py                 # Uvicorn 入口
-│   │   ├── api.py                  # REST 与 WebSocket
+│   │   ├── api.py                  # REST 与 WebSocket 组装
+│   │   ├── prescription_routes.py # 处方录入、查询和人工审核
+│   │   ├── pagination.py          # 共用列表分页响应
 │   │   ├── models.py               # 请求模型与枚举
 │   │   ├── service.py              # 业务与操作事务
 │   │   ├── engine.py               # 离散事件调度
@@ -118,3 +124,7 @@ PostgreSQL 包含两张表。`simulation_state` 的单条快照保存时钟、�
 ## 运行边界
 
 进程内可重入锁保护单调时钟和快照缓存，PostgreSQL 行锁保护数据库写入。同一数据库仅运行一个服务进程，多个 worker 会各自驱动时钟并执行重启暂停。当前没有账户隔离、历史删除接口或在线重置接口。
+
+## 本草处方对接
+
+本草将已确认药材转换为平台请求，平台复用处方业务及 PostgreSQL 事务。外部编号在录入事务内唯一，新记录进入待人工审核状态。完整接收约定见 [本草对接说明](BENCAO-INTEGRATION.md)。

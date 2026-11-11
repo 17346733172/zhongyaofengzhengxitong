@@ -51,6 +51,33 @@ class Store:
             _create_tables(db)
             db.execute("INSERT INTO simulation_state VALUES (1, %s::json) ON CONFLICT (id) DO NOTHING",
                        (json.dumps(initial_state(), ensure_ascii=False, allow_nan=False),))
+            self._restore_prescription_times(db)
+
+    @staticmethod
+    def _restore_prescription_times(db):
+        """Recover receipt and review times from their original events, never from sim time."""
+        state = db.execute("SELECT payload FROM simulation_state WHERE id=1 FOR UPDATE").fetchone()["payload"]
+        targets = (
+            ("prescription.created", state["prescriptions"], "created_real_time"),
+            ("prescription.reviewed", {pid: p["review"] for pid, p in state["prescriptions"].items()
+                                       if p.get("review")}, "real_time"),
+        )
+        restored = False
+        for event_type, records, field in targets:
+            missing = [pid for pid, record in records.items() if not record.get(field)]
+            if not missing:
+                continue
+            rows = db.execute(
+                "SELECT DISTINCT ON (entity_id) entity_id, real_time FROM events "
+                "WHERE type=%s AND entity_id = ANY(%s) ORDER BY entity_id, id",
+                (event_type, missing),
+            ).fetchall()
+            for row in rows:
+                records[row["entity_id"]][field] = row["real_time"]
+            restored = restored or bool(rows)
+        if restored:
+            db.execute("UPDATE simulation_state SET payload=%s::json WHERE id=1",
+                       (json.dumps(state, ensure_ascii=False, allow_nan=False),))
 
     @contextmanager
     def transaction(self):
@@ -62,8 +89,10 @@ class Store:
                 pending = []
 
                 def emit(event_type, entity_id, **payload):
-                    pending.append((state["clock"]["now"], datetime.now(timezone.utc).isoformat(),
+                    real_time = datetime.now(timezone.utc).isoformat()
+                    pending.append((state["clock"]["now"], real_time,
                                     event_type, entity_id, json.dumps(payload, ensure_ascii=False, allow_nan=False)))
+                    return real_time
 
                 yield state, emit
                 db.execute("UPDATE simulation_state SET payload=%s::json WHERE id=1",

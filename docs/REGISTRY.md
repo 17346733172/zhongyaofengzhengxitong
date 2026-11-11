@@ -35,6 +35,12 @@
 
 花括号中的动作代表独立 URL，例如 `/devices/decocter-01/fault`。操作接口请求为 `{"operator":"演示操作员","reason":"人工操作"}`，字段可省略但需提交 `{}`。
 
+处方录入、查询和审核由 `backend/app/prescription_routes.py` 注册到统一鉴权路由。外部调用重试复用 `external_no`，重复录入返回 `409 / duplicate_prescription`。接收示例见 [本草对接说明](BENCAO-INTEGRATION.md)。
+
+处方响应新增 `created_real_time`（带 UTC 时区的 ISO 8601 实际录入时间），前端按北京时间显示日期和时间。原 `created_at` 仍为仿真累计秒数，供既有调用方使用。启动时从最早的 `prescription.created` 事件补齐历史实际时间；没有创建事件的记录不推算时间，页面显示 `—`。
+
+审核记录新增 `review.real_time`（带 UTC 时区的 ISO 8601 实际审核时间），与 `prescription.reviewed` 事件的 `real_time` 同事务保存；人工通过、驳回及演示审核均记录。详情页显示“审核时间（北京）”及完整日期时间，原 `review.sim_time` 保留兼容。启动时从最早的审核事件恢复历史时间，没有审核事件时显示 `—`。
+
 ## 分页、错误与认证
 
 处方、批次、报警列表支持 `offset` 和 `limit`（默认 50，上限 200）；相应 `status` 参数支持状态筛选。返回 `items,total,offset,limit`。设备列表规模较小，目前不分页。

@@ -88,6 +88,18 @@ export function formatVirtualDuration(totalSeconds) {
   return `${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
+const BEIJING_DATE_TIME = new Intl.DateTimeFormat("sv-SE", {
+  timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
+
+/** 实际记录时间使用带时区的 ISO 字符串；缺失时不以仿真秒数代替。 */
+export function formatBeijingDateTime(value) {
+  if (typeof value !== "string" || !/(Z|[+-]\d{2}:\d{2})$/i.test(value)) return "—";
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "—" : BEIJING_DATE_TIME.format(date);
+}
+
 /** 温度保留一位小数并带单位，字段名已含 _c 后缀 */
 export function formatTemperature(celsius) {
   if (celsius === null || celsius === undefined || Number.isNaN(celsius)) return "—";

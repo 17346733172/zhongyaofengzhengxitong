@@ -31,8 +31,21 @@ class DeviceKind(StrEnum):
 
 class Herb(Model):
     name: Text
-    grams_per_dose: float = Field(gt=0, le=1000)
+    grams_per_dose: float | None = Field(default=None, gt=0, le=1000, description="每剂实际克数；片数处方可在审核时补称重")
+    unit: Literal["g", "piece"] = Field(default="g", description="g 为克，piece 为片")
+    quantity_per_dose: float | None = Field(default=None, gt=0, le=1000000, description="每剂片数，可记录半片等小数")
     method: Literal["normal", "pre_decoct", "late_add", "bag"] = "normal"
+
+    @model_validator(mode="after")
+    def validate_quantity(self):
+        if self.unit == "g":
+            if self.grams_per_dose is None:
+                raise ValueError("克单位必须提供每剂克数")
+            if self.quantity_per_dose is not None:
+                raise ValueError("克单位不接受片数字段")
+        elif self.quantity_per_dose is None:
+            raise ValueError("片单位必须提供每剂片数")
+        return self
 
 
 class Recipe(Model):
@@ -48,7 +61,7 @@ class Recipe(Model):
 
 
 class PrescriptionCreate(Model):
-    external_no: Text
+    external_no: Text = Field(description="外部处方唯一编号，调用方重试时应复用同一编号")
     patient_code: Text = Field(description="仿真匿名编号，请勿录入真实患者信息")
     doses: int = Field(default=3, ge=1, le=30)
     bags_per_dose: int = Field(default=2, ge=1, le=4)
@@ -73,6 +86,8 @@ class Review(Model):
     approved: bool
     operator: Text
     comment: str = Field(default="", max_length=1000)
+    herb_grams_per_dose: dict[Text, Annotated[float, Field(gt=0, le=1000)]] = Field(
+        default_factory=dict, max_length=100, description="按药名补充计数饮片的每剂实测克数，不改变原始片数")
 
 
 class BatchCreate(Model):

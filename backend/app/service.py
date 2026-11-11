@@ -85,7 +85,7 @@ class Service:
         p = {**data, "id": ident("rx"), "status": "pending_review", "batch_id": None,
              "created_at": s["clock"]["now"], "review": None}
         s["prescriptions"][p["id"]] = p
-        emit("prescription.created", p["id"], external_no=p["external_no"])
+        p["created_real_time"] = emit("prescription.created", p["id"], external_no=p["external_no"])
         return p
 
     def review(self, prescription_id, request):
@@ -93,9 +93,18 @@ class Service:
             p = require(s["prescriptions"], prescription_id, "处方")
             if p["status"] != "pending_review":
                 raise DomainError("already_reviewed", "该处方已经审核，不能重复审核")
+            count_herbs = {h["name"] for h in p["herbs"] if h.get("unit") == "piece"}
+            if set(request.herb_grams_per_dose) - count_herbs:
+                raise DomainError("invalid_herb_weight", "只能为本处方按片记录的饮片补充每剂实测克数", 422)
+            herbs = [{**h, "grams_per_dose": request.herb_grams_per_dose[h["name"]]}
+                     if h["name"] in request.herb_grams_per_dose else dict(h) for h in p["herbs"]]
+            missing = [h["name"] for h in herbs if h.get("grams_per_dose") is None]
+            if request.approved and missing:
+                raise DomainError("herb_weight_required", "请先补充" + "、".join(missing) + "的每剂实测克数；片数不自动换算为克", 422)
+            p["herbs"] = herbs
             p["status"] = "approved" if request.approved else "rejected"
             p["review"] = {**request.model_dump(), "sim_time": s["clock"]["now"]}
-            emit("prescription.reviewed", p["id"], **p["review"])
+            p["review"]["real_time"] = emit("prescription.reviewed", p["id"], **p["review"])
         return p
 
     @staticmethod
@@ -105,6 +114,8 @@ class Service:
             raise DomainError("review_required", "处方需人工审核通过后才能生产")
         if p["batch_id"]:
             raise DomainError("duplicate_batch", "该处方已经创建批次")
+        if any(h.get("grams_per_dose") is None for h in p["herbs"]):
+            raise DomainError("herb_weight_required", "计数饮片须补齐每剂实测克数后才能计算水量并创建批次", 422)
         b = {"id": ident("batch"), "prescription_id": p["id"],
              "trace_code": f"TCM-{uuid4().hex.upper()}", "sequence": len(s["batches"]) + 1,
              "priority": p["priority"], "status": "queued", "stage_index": 0,
@@ -217,7 +228,7 @@ class Service:
                 p = self._prescription(s, emit, request.model_dump())
                 p.update(status="approved", review={"approved": True, "operator": "演示场景生成器",
                          "comment": "匿名模拟处方，演示审核通过", "sim_time": s["clock"]["now"]})
-                emit("prescription.reviewed", p["id"], **p["review"])
+                p["review"]["real_time"] = emit("prescription.reviewed", p["id"], **p["review"])
                 b = self._batch(s, emit, p["id"])
                 ids.append(b["id"])
         return {"batch_ids": ids, "count": count, "message": "演示批次已创建，请开始真实计时运行"}

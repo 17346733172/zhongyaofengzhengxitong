@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { Alert, Button, Space, Table, Tag } from "antd";
 import { api } from "../api/client";
+import { herbDose } from "../domain/herb-dose";
 import { BatchStatusTag, Chip, PanelSkeleton, Verdict } from "../components/Display";
 import { HERB_METHOD_LABELS, formatVirtualDuration } from "../domain/labels";
 
@@ -143,7 +144,7 @@ export function TracePage() {
             {prescription.herbs.map((h) => (
               <Tag key={h.name} bordered={false}
                    color={h.method === "late_add" ? "warning" : h.method === "pre_decoct" ? "processing" : "default"}>
-                {h.name} · {h.grams_per_dose}g · {HERB_METHOD_LABELS[h.method] || h.method}
+                {h.name} · {herbDose(h)} · {HERB_METHOD_LABELS[h.method] || h.method}
               </Tag>
             ))}
           </Space>
